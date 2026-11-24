@@ -31,7 +31,9 @@ Traditional object detection workflows frequently rely on YOLO models (e.g., YOL
 
 ---
 
-## 🧠 Key Engineering Skills & Capabilities
+## 🏗️ Pipeline Architecture & Capabilities
+
+![WorkZone Vision Pipeline Architecture](docs/pipeline_architecture.png)
 
 This project implements an end-to-end machine learning engineering lifecycle:
 
@@ -127,6 +129,16 @@ workzone-vision/
 ```bash
 git clone https://github.com/sivanandan21/workzone-vision.git
 cd workzone-vision
+
+# Create and activate virtual environment (Python 3.10–3.12 recommended)
+python -m venv .venv
+
+# Linux / macOS:
+source .venv/bin/activate
+
+# Windows:
+.venv\Scripts\activate
+
 pip install -e .
 ```
 
@@ -219,7 +231,7 @@ Because RF-DETR is an all-rounder foundation detector, WorkZone Vision seamlessl
 ## 📜 Third-Party Attributions
 
 - **[RF-DETR](https://github.com/roboflow/rf-detr)** (Apache-2.0 License): Real-time detection transformer model architectures.
-- **[Supervision](https://github.com/roboflow/supervision)** (Apache-2.0 License): Computer vision utilities and detection data structures.
+- **[Supervision](https://github.com/roboflow/supervision)** (MIT License): Computer vision utilities and detection data structures.
 - **[OpenCV](https://opencv.org/)** (Apache-2.0 License): Image and video processing.
 - **[ONNX Runtime](https://onnxruntime.ai/)** (MIT License): High-performance cross-platform ML inference engine.
 - **[PyTorch](https://pytorch.org/)** (Modified BSD License): Deep learning framework.
