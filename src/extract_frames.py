@@ -1,4 +1,4 @@
-"""CCTV frame extraction and quality filtering.
+"""Video frame extraction and quality filtering.
 
 Performs:
 1. Video sampling (every N frames).
@@ -75,7 +75,7 @@ def extract_cctv_frames(
     output_dir: str,
     config: Optional[ExtractionConfig] = None,
 ) -> Dict[str, Any]:
-    """Extract sharp, non-duplicate candidate frames from a single CCTV video.
+    """Extract sharp, non-duplicate candidate frames from a video file.
     
     Args:
         video_path: Path to video file (.mp4, .avi, .mkv, .mov).
@@ -239,7 +239,7 @@ def process_video_directory(
         all_stats.append(stats)
 
     # Display summary table
-    table = Table(title="CCTV Frame Extraction Summary")
+    table = Table(title="Video Frame Extraction Summary")
     table.add_column("Video File", style="cyan")
     table.add_column("Sampled", justify="right")
     table.add_column("Blurry Dropped", justify="right", style="red")

@@ -285,7 +285,7 @@ def validate_cctv_dataset(
     d_path = Path(dataset_dir or config.dataset_dir)
     console.print(
         Panel(
-            f"[bold cyan]Validating Office CCTV Dataset Integrity[/bold cyan]\n"
+            f"[bold cyan]Validating Dataset Integrity (COCO Format)[/bold cyan]\n"
             f"Directory: [yellow]{d_path.resolve()}[/yellow]\n"
             f"Target Classes: [green]{target_classes}[/green]",
             title="Dataset Validator",

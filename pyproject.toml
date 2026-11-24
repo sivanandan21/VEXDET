@@ -5,10 +5,32 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "workzone-vision"
 version = "0.1.0"
-description = "Edge-ready CCTV person-detection fine-tuning, hard-negative mining, and ONNX export pipeline."
+description = "Edge-ready real-time object detection fine-tuning, active learning, hard-negative mining, and ONNX export pipeline powered by Apache-2.0 RF-DETR."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
+keywords = [
+  "computer-vision",
+  "object-detection",
+  "rf-detr",
+  "active-learning",
+  "onnx",
+  "edge-ai",
+  "pytorch",
+  "video-analytics",
+  "yolo-alternative"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+]
 authors = [
   { name = "sivanandan21", email = "sivapn721@gmail.com" }
 ]

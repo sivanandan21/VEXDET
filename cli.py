@@ -2,10 +2,10 @@
 
 Commands:
   download          Download and verify RF-DETR model weights
-  extract-frames    Extract sharp, non-duplicate CCTV frames
+  extract-frames    Extract sharp, non-duplicate video frames
   validate-dataset  Verify COCO dataset integrity and class distributions
-  train             Fine-tune model on custom CCTV dataset
-  mine-negatives    Mine hard-negative and ambiguous CCTV frames
+  train             Fine-tune model on custom dataset
+  mine-negatives    Mine hard-negative and ambiguous frames
   evaluate          Benchmark Pretrained vs. Fine-Tuned (mAP@50, mAP@50:95, latency)
   export            Export checkpoint to ONNX format and verify
   pipeline          Run full end-to-end accuracy pipeline
@@ -28,7 +28,7 @@ from src.validate_dataset import validate_cctv_dataset
 
 app = typer.Typer(
     name="workzone",
-    help="WorkZone Vision: Edge-ready CCTV person detection fine-tuning and export pipeline.",
+    help="WorkZone Vision: Edge-ready real-time object detection fine-tuning, active learning, and ONNX export pipeline.",
     add_completion=False,
 )
 console = Console()
@@ -47,13 +47,13 @@ def download_cmd(
 
 @app.command("extract-frames")
 def extract_cmd(
-    video_dir: Optional[str] = typer.Option(None, "--video-dir", "-i", help="Directory of input CCTV video clips"),
+    video_dir: Optional[str] = typer.Option(None, "--video-dir", "-i", help="Directory of input video files / camera recordings"),
     output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="Destination directory for frames"),
     interval: Optional[int] = typer.Option(None, "--frame-interval", help="Sample every N frames"),
     blur_threshold: Optional[float] = typer.Option(None, "--blur-threshold", help="Variance of Laplacian threshold"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Extract sharp, non-duplicate frames from raw CCTV video clips."""
+    """Extract sharp, non-duplicate frames from video clips."""
     cfg = load_config(config)
     if interval is not None:
         cfg.extraction.frame_interval = interval
@@ -93,7 +93,7 @@ def train_cmd(
     resume: Optional[str] = typer.Option(None, "--resume", "-r", help="Checkpoint path to resume from"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Fine-tune RF-DETR on office CCTV data."""
+    """Fine-tune RF-DETR on custom labeled dataset."""
     cfg = load_config(config)
     res = train_model(
         model_name=model_name or cfg.model.name,
@@ -111,7 +111,7 @@ def train_cmd(
 
 @app.command("mine-negatives")
 def mine_cmd(
-    input_dir: Optional[str] = typer.Option(None, "--input-dir", "-i", help="Directory of candidate CCTV frames"),
+    input_dir: Optional[str] = typer.Option(None, "--input-dir", "-i", help="Directory of candidate video frames"),
     output_dir: Optional[str] = typer.Option(None, "--output-dir", "-o", help="Directory for mined hard negatives"),
     min_conf: Optional[float] = typer.Option(None, "--min-conf", help="Lower bound of ambiguous confidence"),
     max_conf: Optional[float] = typer.Option(None, "--max-conf", help="Upper bound of ambiguous confidence"),
@@ -119,7 +119,7 @@ def mine_cmd(
     checkpoint: Optional[str] = typer.Option(None, "--checkpoint", help="Path to checkpoint weights"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Mine ambiguous, low-confidence CCTV frames for retraining round 2."""
+    """Mine ambiguous, low-confidence frames for retraining round 2."""
     cfg = load_config(config)
     if min_conf is not None:
         cfg.hard_mining.min_confidence = min_conf
@@ -180,18 +180,18 @@ def full_pipeline_cmd(
     model_name: str = typer.Option("RFDETRSmall", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Execute complete end-to-end RF-DETR CCTV accuracy workflow."""
+    """Execute complete end-to-end RF-DETR object detection workflow."""
     cfg = load_config(config)
     cfg.model.name = model_name
 
     console.print(
         Panel(
-            "[bold green]Starting End-to-End RF-DETR CCTV Accuracy Pipeline[/bold green]\n"
+            "[bold green]Starting End-to-End WorkZone Vision Pipeline[/bold green]\n"
             "Stages:\n"
             " 1. Download & verify Apache-2.0 RF-DETR model\n"
-            " 2. Extract & filter high-quality CCTV frames\n"
+            " 2. Extract & filter high-quality video frames\n"
             " 3. Validate dataset integrity & annotations\n"
-            " 4. Fine-tune model on custom CCTV data\n"
+            " 4. Fine-tune model on custom dataset\n"
             " 5. Mine hard-negatives for round 2 retraining\n"
             " 6. Benchmark Pretrained vs. Fine-Tuned accuracy (mAP, latency)\n"
             " 7. Export and verify ONNX runtime model",
@@ -229,7 +229,7 @@ def full_pipeline_cmd(
     console.print("\n[bold]Stage 7: ONNX Export & Verification[/bold]")
     export_to_onnx(checkpoint_path=best_checkpoint, model_name=model_name, config=cfg.export)
 
-    console.print("\n[bold green]✓ Full RF-DETR Accuracy Pipeline completed successfully![/bold green]")
+    console.print("\n[bold green]✓ Full WorkZone Vision Pipeline completed successfully![/bold green]")
 
 
 if __name__ == "__main__":

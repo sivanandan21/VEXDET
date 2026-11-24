@@ -83,7 +83,7 @@ def train_model(
 
     console.print(
         Panel(
-            f"[bold cyan]RF-DETR Office CCTV Fine-Tuning Pipeline[/bold cyan]\n"
+            f"[bold cyan]RF-DETR Object Detection Fine-Tuning Pipeline[/bold cyan]\n"
             f"Model: [yellow]{m_name}[/yellow]\n"
             f"Dataset: [green]{d_dir.resolve()}[/green]\n"
             f"Classes: [green]{config.detection.classes}[/green]\n"

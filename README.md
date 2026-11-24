@@ -3,44 +3,103 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/sivanandan21/workzone-vision/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![Architecture: RF-DETR](https://img.shields.io/badge/Architecture-RF--DETR_(RT--DETR)-orange.svg)](https://github.com/roboflow/rf-detr)
+[![Packaging: pyproject.toml](https://img.shields.io/badge/packaging-pyproject.toml-green.svg)](pyproject.toml)
 
-Edge-ready CCTV person-detection fine-tuning, hard-negative mining, and ONNX export pipeline built on Apache-2.0 RF-DETR architectures.
+> **Edge-ready real-time object detection fine-tuning, active learning, hard-negative mining, and ONNX optimization pipeline powered by Apache-2.0 RF-DETR.**
 
 Author: **sivanandan21** ([sivapn721@gmail.com](mailto:sivapn721@gmail.com))
 
 ---
 
-## Overview
+## 🌟 Why RF-DETR? (The Permissive All-Rounder Model)
 
-**WorkZone Vision** is a specialized engineering toolkit for optimizing person and head detection accuracy in office CCTV and workspace monitoring environments. It provides an end-to-end workflow to:
+Traditional object detection workflows frequently rely on YOLO models (e.g., YOLOv8, YOLO11), but those are governed by restrictive **AGPL-3.0** licenses that limit commercial and proprietary deployment. 
 
-1. **Download & Initialize**: Fetch Apache-2.0 RF-DETR architectures (`RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`, `RFDETRLarge`).
-2. **Quality Frame Extraction**: Filter out motion blur (Laplacian variance) and static duplicate scenes (frame difference & histogram correlation) from raw CCTV footage.
-3. **Dataset Validation**: Validate COCO annotation integrity, bounding box geometry, image readability, and class distributions.
-4. **Fine-Tuning**: Adapt the detector to custom office CCTV data (`person` or dual-class `person` + `head`) on CUDA or CPU backends.
-5. **Hard-Negative Mining**: Identify ambiguous detections (confidence 0.15–0.45) and false positives for targeted retraining cycles.
-6. **Rigorous Benchmarking**: Compute COCO-standard `mAP@50`, `mAP@50:95`, precision, recall, and inference latency (`ms`, FPS) comparing baseline against fine-tuned checkpoints.
-7. **ONNX Export & Verification**: Export fine-tuned models to ONNX and verify cross-backend runtime accuracy.
+**RF-DETR** (Real-Time Detection Transformer, developed by Roboflow based on RT-DETR) is a modern, state-of-the-art **all-rounder foundation detector**:
+
+| Feature | RF-DETR (WorkZone Vision) | YOLO (v8 / v11) |
+| :--- | :--- | :--- |
+| **Architecture** | **Transformer-based (NMS-free end-to-end)** | CNN-based with post-processing NMS |
+| **License** | **Apache-2.0** (Commercially friendly) | AGPL-3.0 (Viral copyleft restrictions) |
+| **Speed & Latency** | **Real-time edge inference** (TensorRT / ONNX) | Real-time edge inference |
+| **Pretrained Weights** | **COCO 80 classes out-of-the-box** | COCO 80 classes out-of-the-box |
+| **Domains** | **Any** camera feed, drone, robotics, live RTSP, edge | Any camera feed |
+| **Fine-Tuning** | Single-class or multi-class custom datasets | Single-class or multi-class |
+
+**WorkZone Vision** packages this all-rounder foundation model into a production-grade active learning and deployment pipeline for any video stream, live camera feed, or image dataset.
 
 ---
 
-## Project Structure
+## 🧠 Key Engineering Skills & Capabilities
+
+This project implements an end-to-end machine learning engineering lifecycle:
+
+```
+Raw Video / Stream ──> [ Frame Quality Filter ] ──> [ Dataset Validator ] ──> [ RF-DETR Fine-Tuning ]
+                               │                                                       │
+                               ▼                                                       ▼
+                      (Blur & Duplicate Drops)                                 (PyTorch Checkpoint)
+                                                                                       │
+                                                                                       ▼
+[ Production Deployment ] <── [ ONNX Runtime Export ] <── [ Accuracy Benchmark ] <── [ Hard-Negative Mining ]
+                                (Cross-Platform Speed)     (mAP@50, mAP@50:95)        (Ambiguity Discovery)
+```
+
+### 1. Computer Vision & Automated Video Curation
+- **Laplacian Variance Blur Filtering**: Automatically drops motion-blurred frames (`blur_score < blur_threshold`) to keep training datasets crisp and prevent detector degradation.
+- **Histogram Correlation & Pixel Delta De-duplication**: Rejects redundant static background frames (`change_pct < 1.5%` or correlation `>= 0.95`), cutting down dataset size and training costs without losing visual diversity.
+- **Color Space Integrity**: Strictly maintains BGR-to-RGB conversion pipelines between OpenCV and Deep Learning inference backends.
+
+### 2. Dataset Engineering & COCO Validation
+- **Deep COCO Schema Verification**: Validates `images`, `annotations`, and `categories` in JSON files.
+- **Coordinate & Bounding Box Auditing**: Detects degenerate zero-area boxes, out-of-bounds annotations, and dimension mismatches against physical images.
+- **Class Distribution Analytics**: Summarizes box size distributions (small `<32px`, medium `32-96px`, large `>96px`) and background images.
+
+### 3. Transfer Learning & Fine-Tuning
+- **Multi-Class Support**: Train on any target classes (e.g., `["person", "head"]`, `["vehicle", "license_plate"]`, `["helmet", "vest"]`, or industrial defect classes).
+- **Hardware-Aware Training**: Automatically configures PyTorch CUDA hardware acceleration with safe fallback to CPU, dynamic batch sizing, and gradient accumulation.
+- **Early Stopping**: Prevents overfitting on custom domains with configurable patience.
+
+### 4. Active Learning & Hard-Negative Mining
+- **Ambiguity Detection**: Filters model predictions in uncertainty windows (e.g., confidence `0.15` to `0.45`) where the detector is unsure.
+- **False-Positive Extraction**: Discovers challenging background objects (reflections, chairs, clothing, clutter) that trigger false alarms.
+- **Review Manifest Generation**: Produces visual overlays and a JSON manifest ready for immediate re-labeling and Round 2 iterative retraining.
+
+### 5. Rigorous Benchmarking & Metrics
+- **Zero Placeholders**: Computes true COCO-standard `mAP@50` and `mAP@50:95` across 10 IoU thresholds using 101-point interpolated precision-recall curves.
+- **Statistical Latency Profiling**: Measures Warmup passes, Min, Max, Mean, P95 latency (ms), and FPS throughput on target hardware.
+- **Comparison Engine**: Generates side-by-side terminal comparison tables showing absolute improvement deltas over baseline weights.
+
+### 6. Edge Deployment & Optimization
+- **ONNX Graph Export**: Direct export of trained PyTorch checkpoints to optimized ONNX graphs (`opset 17`).
+- **ONNX Runtime Verification**: Loads exported artifacts via `RFDETRInference` to verify numerical consistency and measure deployment speedup.
+
+### 7. Modern Python Packaging & MLOps
+- Standard `pyproject.toml` configuration with console script entry point `workzone`.
+- Pydantic v2 data models with runtime validation.
+- Interactive terminal UI using Rich tables, panels, and progress bars.
+- Automated GitHub Actions CI workflow running multi-version matrix tests.
+
+---
+
+## 📁 Repository Structure
 
 ```
 workzone-vision/
 ├── configs/
-│   └── config.yaml               # Hyperparameters and pipeline thresholds
+│   └── config.yaml               # Pipeline hyperparameters and thresholds
 ├── data/
-│   ├── raw_videos/.gitkeep       # CCTV video clips (.mp4, .avi, etc.)
-│   ├── extracted_frames/.gitkeep # Filtered sharp candidate frames
+│   ├── raw_videos/.gitkeep       # Input video recordings (.mp4, .avi, etc.)
+│   ├── extracted_frames/.gitkeep # Curated sharp candidate frames
 │   ├── dataset/.gitkeep          # Labeled COCO dataset (train, val, test)
 │   └── hard_negatives/.gitkeep   # Mined ambiguous/false-positive frames
 ├── models/
-│   ├── checkpoints/.gitkeep      # PyTorch fine-tuning checkpoints
-│   └── exported/.gitkeep         # Exported ONNX models
+│   ├── checkpoints/.gitkeep      # Fine-tuned PyTorch checkpoints (.pt/.pth)
+│   └── exported/.gitkeep         # Exported ONNX models (.onnx)
 ├── src/
 │   ├── __init__.py
-│   ├── config.py                 # Pydantic v2 schemas and model validation
+│   ├── config.py                 # Pydantic v2 schemas and model whitelist
 │   ├── model_factory.py          # Model and inference predictor factory
 │   ├── download_model.py         # Model download & verification routine
 │   ├── extract_frames.py         # Laplacian blur & duplicate scene filter
@@ -50,7 +109,7 @@ workzone-vision/
 │   ├── evaluate.py               # Precision-recall curves, mAP & latency benchmark
 │   └── export_model.py           # ONNX export and runtime verification
 ├── tests/
-│   └── test_smoke.py             # Comprehensive test suite
+│   └── test_smoke.py             # Pytest test suite (25 tests)
 ├── .github/
 │   └── workflows/ci.yml          # GitHub Actions CI matrix
 ├── cli.py                        # Unified command-line interface
@@ -62,122 +121,112 @@ workzone-vision/
 
 ---
 
-## Installation
+## 🚀 Quickstart & CLI Commands
 
-### Prerequisites
-- Python 3.10 or higher
-- NVIDIA GPU with CUDA drivers (optional; automatically falls back to CPU if unavailable)
-
-### Install via pip
+### Installation
 ```bash
 git clone https://github.com/sivanandan21/workzone-vision.git
 cd workzone-vision
 pip install -e .
 ```
 
-Or install dependencies directly:
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Usage
-
-WorkZone Vision can be executed via the installed `workzone` command or `python cli.py`:
+All commands can be invoked via the global CLI alias `workzone` or `python cli.py`:
 
 ```bash
 workzone --help
 ```
 
 ### 1. Download Model
-Fetch official weights for `RFDETRSmall` (or `nano`, `medium`, `large`):
+Download official weights for any Apache-2.0 RF-DETR model (`RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`, `RFDETRLarge`):
 ```bash
 workzone download --model-name RFDETRSmall
 ```
 
-### 2. Extract & Filter CCTV Frames
-Extract clear candidate frames from video clips in `data/raw_videos/`:
+### 2. Extract & Filter Frames from Video
+Curate sharp, non-duplicate training frames from raw video clips:
 ```bash
 workzone extract-frames --video-dir data/raw_videos --frame-interval 15 --blur-threshold 100.0
 ```
-- Drops blurry frames (`blur_score < blur_threshold`).
-- Drops static scenes (`change_pct < 1.5%` or histogram correlation `>= 0.95`).
 
-### 3. Validate Dataset
-Verify your labeled COCO dataset before training:
+### 3. Validate Dataset Integrity
+Audit COCO labels before launching training:
 ```bash
 workzone validate-dataset --dataset-dir data/dataset --classes person
 ```
 
-### 4. Fine-Tune Model
-Train on your custom office CCTV dataset:
+### 4. Fine-Tune on Custom Domain
+Fine-tune the detector on your labeled dataset:
 ```bash
 workzone train --model-name RFDETRSmall --epochs 15 --batch-size 4 --lr 0.0001
 ```
 
-### 5. Mine Hard Negatives
-Extract ambiguous frames (confidence 0.15–0.45) for human review and retraining round 2:
+### 5. Mine Hard Negatives (Active Learning Loop)
+Uncover ambiguous detections (confidence `0.15`–`0.45`) to prepare Round 2 retraining data:
 ```bash
 workzone mine-negatives --input-dir data/extracted_frames --min-conf 0.15 --max-conf 0.45
 ```
-- Saves raw frames to `data/hard_negatives/images/`.
-- Saves annotated visuals to `data/hard_negatives/visualizations/`.
-- Generates `mining_manifest.json` for review.
 
 ### 6. Benchmark Accuracy & Latency
-Evaluate the fine-tuned checkpoint against baseline pretrained weights:
+Evaluate mAP and inference speed comparing pretrained baseline vs. fine-tuned checkpoint:
 ```bash
 workzone evaluate --model-name RFDETRSmall --checkpoint models/checkpoints/best.pt
 ```
-Computes:
-- `mAP@50` (Mean Average Precision at IoU 0.50)
-- `mAP@50:95` (COCO standard mean Average Precision across IoU thresholds 0.50:0.95 in 0.05 steps)
-- Latency (min, max, mean, P95 in `ms`) and FPS throughput
-- Side-by-side comparison with absolute improvement deltas
 
-### 7. Export to ONNX
-Export the model to ONNX format and run verification inference:
+### 7. Export to ONNX & Verify
+Export the fine-tuned model for production edge deployment:
 ```bash
 workzone export --checkpoint models/checkpoints/best.pt --model-name RFDETRSmall
 ```
 
-### Full End-to-End Pipeline
-Run all stages sequentially:
+### 8. End-to-End Pipeline
+Run the full 7-stage active learning pipeline sequentially:
 ```bash
 workzone pipeline --model-name RFDETRSmall
 ```
 
 ---
 
-## Testing
+## 🧪 Testing
 
-Run the test suite using pytest:
+Run the automated test suite with pytest:
 ```bash
 pytest -v
 ```
 
-Tests cover:
-- Architecture whitelist validation
-- Laplacian blur score and duplicate frame differentiation
-- Synthetic COCO dataset validation (valid, missing images, invalid coordinates)
-- Bounding box IoU calculations and 101-point Average Precision interpolation
-- BGR to RGB color conversion for inference
+All 25 smoke tests verify:
+- Architecture whitelist enforcement
+- Laplacian variance blur metric differentiation
+- Frame differencing and histogram correlation
+- COCO dataset schema and geometry validation
+- Bounding box IoU calculations
+- 101-point interpolated Average Precision mathematics
+- OpenCV BGR-to-RGB color space conversions
 
 ---
 
-## Third-Party Attributions
+## 🌐 Real-World Application Domains
 
-This project relies on and acknowledges the following open-source libraries:
+Because RF-DETR is an all-rounder foundation detector, WorkZone Vision seamlessly applies across diverse industries:
+
+- **Workplace Safety & PPE**: Person detection, hard hat compliance, high-visibility vest verification.
+- **Smart Cities & Traffic**: Vehicle tracking, pedestrian detection, bicycle counting from traffic cameras.
+- **Robotics & Drones**: Real-time obstacle and human detection for autonomous mobile robots (AMRs) and aerial feeds.
+- **Retail & Security**: Customer foot-traffic analytics, queue monitoring, restricted zone boundary alerts.
+- **Manufacturing & Logistics**: Package detection, conveyor belt monitoring, machinery safety perimeter guards.
+
+---
+
+## 📜 Third-Party Attributions
+
 - **[RF-DETR](https://github.com/roboflow/rf-detr)** (Apache-2.0 License): Real-time detection transformer model architectures.
 - **[Supervision](https://github.com/roboflow/supervision)** (Apache-2.0 License): Computer vision utilities and detection data structures.
 - **[OpenCV](https://opencv.org/)** (Apache-2.0 License): Image and video processing.
-- **[ONNX Runtime](https://onnxruntime.ai/)** (MIT License): Cross-platform, high-performance ML inference engine.
+- **[ONNX Runtime](https://onnxruntime.ai/)** (MIT License): High-performance cross-platform ML inference engine.
 - **[PyTorch](https://pytorch.org/)** (Modified BSD License): Deep learning framework.
 - **[Typer](https://typer.tiangolo.com/)** & **[Rich](https://github.com/Textualize/rich)** (MIT License): Command-line interface and terminal formatting.
 
 ---
 
-## License
+## 📄 License
 
-This project is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file for details.

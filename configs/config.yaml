@@ -1,4 +1,4 @@
-# WorkZone Vision - CCTV Person Detection Pipeline Configuration
+# WorkZone Vision - Real-Time Object Detection & Video Stream Pipeline Configuration
 # Supported architectures: RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge
 
 model:
@@ -9,6 +9,10 @@ model:
 detection:
   classes:
     - "person"
+    # Easily extend to any custom classes:
+    # - "head"
+    # - "helmet"
+    # - "vehicle"
   confidence_threshold: 0.35
   default_threshold: 0.50
   class_thresholds:
