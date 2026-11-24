@@ -1,4 +1,4 @@
-"""Hard-negative and low-confidence frame mining for CCTV video.
+"""Hard-negative and low-confidence frame mining for video and camera feeds.
 
 Identifies ambiguous detections (e.g., confidence between 0.15 and 0.45)
 and potential false positives to curate high-impact samples for subsequent
@@ -94,15 +94,21 @@ def mine_hard_negatives(
     checkpoint_path: Optional[str] = None,
     input_frames_dir: Optional[str] = None,
     output_dir: Optional[str] = None,
+    enhanced: bool = False,
+    enable_tiling: Optional[bool] = None,
+    enable_tta: Optional[bool] = None,
     config: Optional[HardMiningConfig] = None,
 ) -> Dict[str, Any]:
-    """Mine hard negative and low-confidence frames from CCTV imagery.
+    """Mine hard negative and low-confidence frames from imagery.
     
     Args:
         model_name: RF-DETR model name (RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge).
         checkpoint_path: Optional custom fine-tuned checkpoint.
-        input_frames_dir: Directory containing extracted CCTV frames.
+        input_frames_dir: Directory containing extracted frames.
         output_dir: Output directory for mined hard negatives.
+        enhanced: Whether to use enhanced multi-pass inference for mining.
+        enable_tiling: Override tiling mode.
+        enable_tta: Override TTA mode.
         config: HardMiningConfig instance.
         
     Returns:
@@ -125,6 +131,7 @@ def mine_hard_negatives(
         f"[bold cyan]Mining Hard Negatives for Retraining Round 2[/bold cyan]\n"
         f"Input directory: {in_dir}\n"
         f"Ambiguity threshold range: [{mining_cfg.min_confidence:.2f}, {mining_cfg.max_confidence:.2f}]\n"
+        f"Enhanced Mode: [green]{'Enabled' if enhanced else 'Disabled'}[/green]\n"
         f"Destination: {out_dir}"
     )
 
@@ -137,8 +144,16 @@ def mine_hard_negatives(
 
     # Initialize model and predictor
     model = create_model(model_name=m_name, pretrain_weights=c_path)
-    # Initialize inference predictor
     predictor = create_predictor(model)
+
+    if enhanced:
+        from src.enhanced_inference import WorkZoneEnhancedPredictor
+        console.print("[dim]Wrapping predictor with WorkZoneEnhancedPredictor for mining...[/dim]")
+        predictor = WorkZoneEnhancedPredictor.from_config(base_predictor=predictor, config=cfg)
+        if enable_tiling is not None:
+            predictor.enable_tiling = enable_tiling
+        if enable_tta is not None:
+            predictor.enable_tta = enable_tta
 
     mined_records: List[Dict[str, Any]] = []
     total_ambiguous = 0

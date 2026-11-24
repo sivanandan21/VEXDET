@@ -405,5 +405,9 @@ def validate_cctv_dataset(
     return overall_valid, report
 
 
+# General alias
+validate_dataset = validate_cctv_dataset
+
+
 if __name__ == "__main__":
     validate_cctv_dataset()

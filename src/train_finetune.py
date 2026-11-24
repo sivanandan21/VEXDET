@@ -1,7 +1,7 @@
 """Fine-tuning module for WorkZone Vision RF-DETR models.
 
-Supports training on custom CCTV datasets for single-class person detection
-or dual-class person and head detection.
+Supports training on custom camera and vision datasets for single-class
+or multi-class object detection.
 """
 
 import json
@@ -32,7 +32,7 @@ def train_model(
     pretrain_weights: Optional[str] = None,
     config: Optional[PipelineConfig] = None,
 ) -> Dict[str, Any]:
-    """Fine-tune an Apache-2.0 RF-DETR model on custom office CCTV dataset.
+    """Fine-tune an Apache-2.0 RF-DETR model on custom camera feeds or domain-specific dataset.
     
     Args:
         model_name: Architecture in ('RFDETRNano', 'RFDETRSmall', 'RFDETRMedium', 'RFDETRLarge').

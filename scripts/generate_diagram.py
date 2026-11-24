@@ -109,7 +109,7 @@ draw_card(
     ax, x=11.4, y=4.5, w=3.1, h=2.5,
     title="4. RF-DETR Training", subtitle="Detection Transformer",
     bullets=[
-        "Apache-2.0 RT-DETR Base",
+        "RFDETRLarge (Default)",
         "NMS-Free End-to-End Loss",
         "CUDA / CPU Auto Fallback",
         "Multi-Class Custom Tuning"

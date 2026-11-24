@@ -15,7 +15,7 @@ ALLOWED_MODELS = {"RFDETRNano", "RFDETRSmall", "RFDETRMedium", "RFDETRLarge"}
 class ModelConfig(BaseModel):
     """RF-DETR Model configuration."""
     name: str = Field(
-        default="RFDETRSmall",
+        default="RFDETRLarge",
         description="Model architecture. Allowed: RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge",
     )
     pretrain_weights: Optional[str] = Field(
@@ -46,11 +46,39 @@ class ModelConfig(BaseModel):
         return v_lower
 
 
+class PreprocessConfig(BaseModel):
+    """Low-light and glare frame preprocessing configuration."""
+    enable_clahe: bool = Field(default=True, description="Enable LAB-color space CLAHE enhancement")
+    clip_limit: float = Field(default=2.0, ge=0.1, le=20.0, description="Contrast limit for CLAHE")
+    tile_grid: List[int] = Field(default_factory=lambda: [8, 8], description="Grid size for histogram equalization")
+
+    @field_validator("tile_grid")
+    @classmethod
+    def validate_tile_grid(cls, v: List[int]) -> List[int]:
+        if len(v) != 2 or any(x < 1 for x in v):
+            raise ValueError("tile_grid must contain exactly two positive integers [grid_x, grid_y]")
+        return v
+
+
+class TilingConfig(BaseModel):
+    """Sliced / Tiled inference configuration for small/far-field targets."""
+    enable_tiling: bool = Field(default=False, description="Enable sliced/tiled inference for far-field/small targets")
+    slice_size: int = Field(default=640, ge=128, le=2048, description="Width and height of image tiles")
+    overlap_ratio: float = Field(default=0.25, ge=0.0, lt=0.8, description="Fraction of tile overlap")
+    iou_threshold: float = Field(default=0.55, ge=0.0, le=1.0, description="IoU threshold for box fusion")
+
+
+class TTAConfig(BaseModel):
+    """Test-Time Augmentation configuration."""
+    enable_tta: bool = Field(default=False, description="Enable Test-Time Augmentation (horizontal flip)")
+    flip_horizontal: bool = Field(default=True, description="Perform horizontal flip augmentation")
+
+
 class DetectionConfig(BaseModel):
     """Detection inference configuration."""
     classes: List[str] = Field(
         default_factory=lambda: ["person"],
-        description="Target classes for office CCTV (e.g. ['person'] or ['person', 'head'])",
+        description="Target classes for custom vision domains (e.g. ['person'], ['person', 'head'], or custom classes)",
     )
     confidence_threshold: float = Field(
         default=0.35,
@@ -71,10 +99,10 @@ class DetectionConfig(BaseModel):
 
 
 class ExtractionConfig(BaseModel):
-    """CCTV frame extraction and quality filtering configuration."""
+    """Video frame extraction and quality filtering configuration."""
     raw_video_dir: str = Field(
         default="data/raw_videos",
-        description="Directory containing raw CCTV video clips",
+        description="Directory containing raw video clips or stream recordings",
     )
     extracted_frames_dir: str = Field(
         default="data/extracted_frames",
@@ -123,10 +151,10 @@ class DatasetConfig(BaseModel):
 
 class TrainingConfig(BaseModel):
     """Model fine-tuning configuration."""
-    epochs: int = Field(default=15, ge=1)
-    batch_size: int = Field(default=4, ge=1)
-    grad_accum_steps: int = Field(default=2, ge=1)
-    lr: float = Field(default=0.0001, gt=0.0)
+    epochs: int = Field(default=30, ge=1)
+    batch_size: int = Field(default=2, ge=1)
+    grad_accum_steps: int = Field(default=8, ge=1)
+    lr: float = Field(default=0.00008, gt=0.0)
     early_stopping: int = Field(default=5, ge=1)
     output_dir: str = Field(default="models/checkpoints")
     resume_path: Optional[str] = Field(default=None)
@@ -192,6 +220,9 @@ class ExportConfig(BaseModel):
 class PipelineConfig(BaseModel):
     """Root configuration aggregating all sub-configs."""
     model: ModelConfig = Field(default_factory=ModelConfig)
+    preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
+    tiling: TilingConfig = Field(default_factory=TilingConfig)
+    tta: TTAConfig = Field(default_factory=TTAConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     dataset: DatasetConfig = Field(default_factory=DatasetConfig)

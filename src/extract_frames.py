@@ -229,7 +229,7 @@ def process_video_directory(
     if not video_files:
         console.print(
             f"[yellow]No video files found in {v_dir}. "
-            f"Place CCTV video clips (.mp4, .avi, .mkv) in this directory.[/yellow]"
+            f"Place video clips (.mp4, .avi, .mkv) in this directory.[/yellow]"
         )
         return []
 
@@ -259,6 +259,10 @@ def process_video_directory(
 
     console.print(table)
     return all_stats
+
+
+# General alias
+extract_video_frames = extract_cctv_frames
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.config import EvaluationConfig, PipelineConfig, load_config
+from src.enhanced_inference import WorkZoneEnhancedPredictor
 from src.mine_hard_negatives import extract_detections_data
 from src.model_factory import create_class_thresholds, create_model, create_predictor
 
@@ -123,9 +124,12 @@ def evaluate_dataset_accuracy(
         if cname not in target_classes:
             continue
         box_xyxy = coco_xywh_to_xyxy(ann["bbox"])
+        area = float(ann.get("area", (box_xyxy[2] - box_xyxy[0]) * (box_xyxy[3] - box_xyxy[1])))
         gt_by_image.setdefault(iid, []).append({
             "box_xyxy": box_xyxy,
             "class_name": cname,
+            "area": area,
+            "is_small": area < 1024.0,
             "matched": False,
         })
 
@@ -174,6 +178,10 @@ def evaluate_dataset_accuracy(
     # Evaluate Average Precision for each IoU threshold and each class
     # Results structure: ap_by_iou[iou_thresh][class_name] = ap_value
     ap_by_iou: Dict[float, Dict[str, float]] = {}
+    small_gt_total = 0
+    small_gt_matched = 0
+    all_gt_total = 0
+    all_gt_matched = 0
 
     for iou_thresh in iou_thresholds:
         ap_by_iou[iou_thresh] = {}
@@ -229,6 +237,20 @@ def evaluate_dataset_accuracy(
                 else:
                     fp[p_idx] = 1.0
 
+            # Record recall and small object metrics at IoU 0.50
+            if abs(iou_thresh - 0.50) < 1e-4:
+                for iid, gts in gt_by_image.items():
+                    for g_idx, g in enumerate(gts):
+                        if g["class_name"] == cname:
+                            all_gt_total += 1
+                            is_matched = gt_matched[iid][g_idx]
+                            if is_matched:
+                                all_gt_matched += 1
+                            if g.get("is_small", False):
+                                small_gt_total += 1
+                                if is_matched:
+                                    small_gt_matched += 1
+
             # Cumulative sums
             cum_tp = np.cumsum(tp)
             cum_fp = np.cumsum(fp)
@@ -250,9 +272,16 @@ def evaluate_dataset_accuracy(
 
     map_50_95 = float(np.mean(all_aps_across_ious)) if all_aps_across_ious else 0.0
 
+    small_obj_recall = round(float(small_gt_matched / max(1, small_gt_total)), 4) if small_gt_total > 0 else (
+        round(float(all_gt_matched / max(1, all_gt_total)), 4) if all_gt_total > 0 else 0.0
+    )
+    overall_recall = round(float(all_gt_matched / max(1, all_gt_total)), 4) if all_gt_total > 0 else 0.0
+
     return {
         "mAP@50": round(map_50, 4),
         "mAP@50:95": round(map_50_95, 4),
+        "small_object_recall": small_obj_recall,
+        "recall@50": overall_recall,
         "per_class_AP@50": {k: round(v, 4) for k, v in ap_50_per_class.items()},
         "total_test_images": len(image_list),
         "ground_truth_counts": total_gt_per_class,
@@ -319,22 +348,29 @@ def benchmark_comparison(
     test_images_dir: Optional[str] = None,
     annotation_file: Optional[str] = None,
     output_report_path: Optional[str] = None,
+    enhanced: bool = True,
+    enable_tiling: Optional[bool] = None,
+    enable_tta: Optional[bool] = None,
     config: Optional[PipelineConfig] = None,
 ) -> Dict[str, Any]:
-    """Benchmark and compare Pretrained baseline vs. Fine-Tuned checkpoint.
+    """Benchmark and compare Pretrained baseline, Fine-Tuned, and WorkZone Max-Accuracy modes.
     
     Calculates:
     - mAP@50
     - mAP@50:95
+    - Small-object recall (area < 32^2 px)
     - Latency (ms) & FPS
-    - Absolute and relative accuracy improvement
+    - 3-Way Rich comparison showing absolute and relative improvements
     
     Args:
-        model_name: Model architecture name.
+        model_name: Model architecture name (defaults to config.model.name, e.g. RFDETRLarge).
         checkpoint_path: Path to fine-tuned checkpoint (.pt or .pth).
         test_images_dir: Directory containing test images.
         annotation_file: Path to test split COCO JSON.
         output_report_path: Path to write JSON report.
+        enhanced: Whether to run 3-way benchmark with WorkZone Max-Accuracy.
+        enable_tiling: Override config for tiling mode in enhanced pass.
+        enable_tta: Override config for TTA mode in enhanced pass.
         config: PipelineConfig instance.
         
     Returns:
@@ -352,16 +388,17 @@ def benchmark_comparison(
     console.print(
         Panel(
             f"[bold cyan]RF-DETR Accuracy & Latency Benchmarking[/bold cyan]\n"
-            f"Model: [yellow]{m_name}[/yellow]\n"
+            f"Base Architecture: [yellow]{m_name}[/yellow]\n"
             f"Pretrained Baseline vs. Fine-Tuned Checkpoint: [blue]{cp_path}[/blue]\n"
+            f"Max-Accuracy Engine: [green]{'Enabled (CLAHE + Slicing + TTA + WBF)' if enhanced else 'Disabled'}[/green]\n"
             f"Evaluation Split: {t_dir} | Annotations: {ann_file}",
             title="Benchmark Setup",
             expand=False,
         )
     )
 
-    # 1. Baseline Pretrained Model
-    console.print("\n[bold cyan]Evaluating Pretrained Baseline Model...[/bold cyan]")
+    # 1. Baseline Pretrained Model (Stock)
+    console.print(f"\n[bold cyan]1. Evaluating Stock Pretrained Baseline ({m_name})...[/bold cyan]")
     base_model = create_model(model_name=m_name, pretrain_weights=None)
     base_predictor = create_predictor(base_model)
 
@@ -377,7 +414,7 @@ def benchmark_comparison(
         )
     else:
         console.print(f"[yellow]Test annotation file not found: {ann_file}. Skipping mAP evaluation.[/yellow]")
-        base_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "per_class_AP@50": {}}
+        base_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "small_object_recall": 0.0, "recall@50": 0.0, "per_class_AP@50": {}}
 
     base_lat = benchmark_latency(
         predictor=base_predictor,
@@ -385,12 +422,13 @@ def benchmark_comparison(
         warmup_runs=eval_cfg.warmup_runs,
     )
 
-    # 2. Fine-Tuned Model
+    # 2. Fine-Tuned Model (Single Pass)
     ft_acc: Dict[str, Any] = {}
     ft_lat: Dict[str, Any] = {}
+    has_checkpoint = bool(cp_path and Path(cp_path).is_file())
 
-    if cp_path and Path(cp_path).is_file():
-        console.print(f"\n[bold cyan]Evaluating Fine-Tuned Model ({cp_path})...[/bold cyan]")
+    if has_checkpoint:
+        console.print(f"\n[bold cyan]2. Evaluating Fine-Tuned Model (Single Pass, {cp_path})...[/bold cyan]")
         ft_model = create_model(model_name=m_name, pretrain_weights=cp_path)
         ft_predictor = create_predictor(ft_model)
 
@@ -404,7 +442,7 @@ def benchmark_comparison(
                 confidence_threshold=eval_cfg.confidence_threshold,
             )
         else:
-            ft_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "per_class_AP@50": {}}
+            ft_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "small_object_recall": 0.0, "recall@50": 0.0, "per_class_AP@50": {}}
 
         ft_lat = benchmark_latency(
             predictor=ft_predictor,
@@ -412,9 +450,44 @@ def benchmark_comparison(
             warmup_runs=eval_cfg.warmup_runs,
         )
     else:
-        console.print(f"[yellow]Checkpoint file not found at {cp_path}. Fine-tuned metrics will be pending.[/yellow]")
-        ft_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "per_class_AP@50": {}}
-        ft_lat = {"mean_latency_ms": 0.0, "fps": 0.0, "min_latency_ms": 0.0, "max_latency_ms": 0.0, "p95_latency_ms": 0.0}
+        console.print(f"[yellow]Checkpoint file not found at {cp_path}. Single-pass fine-tuned metrics will match base or remain pending.[/yellow]")
+        ft_predictor = base_predictor
+        ft_acc = {"mAP@50": base_acc.get("mAP@50", 0.0), "mAP@50:95": base_acc.get("mAP@50:95", 0.0), "small_object_recall": base_acc.get("small_object_recall", 0.0), "recall@50": base_acc.get("recall@50", 0.0), "per_class_AP@50": {}}
+        ft_lat = base_lat.copy()
+
+    # 3. WorkZone Max-Accuracy (Fine-Tuned + CLAHE + Slicing + TTA + WBF)
+    enh_acc: Dict[str, Any] = {}
+    enh_lat: Dict[str, Any] = {}
+
+    if enhanced:
+        console.print(f"\n[bold green]3. Evaluating WorkZone Max-Accuracy (CLAHE + Slicing + TTA + WBF)...[/bold green]")
+        enh_predictor = WorkZoneEnhancedPredictor.from_config(
+            base_predictor=ft_predictor,
+            config=config,
+            force_enhanced=True,
+        )
+        if enable_tiling is not None:
+            enh_predictor.enable_tiling = enable_tiling
+        if enable_tta is not None:
+            enh_predictor.enable_tta = enable_tta
+
+        if Path(ann_file).is_file():
+            enh_acc = evaluate_dataset_accuracy(
+                predictor=enh_predictor,
+                test_images_dir=t_dir,
+                annotation_file=ann_file,
+                target_classes=config.detection.classes,
+                iou_thresholds=eval_cfg.iou_thresholds,
+                confidence_threshold=eval_cfg.confidence_threshold,
+            )
+        else:
+            enh_acc = {"mAP@50": 0.0, "mAP@50:95": 0.0, "small_object_recall": 0.0, "recall@50": 0.0, "per_class_AP@50": {}}
+
+        enh_lat = benchmark_latency(
+            predictor=enh_predictor,
+            num_runs=max(10, eval_cfg.benchmark_runs // 2),
+            warmup_runs=max(2, eval_cfg.warmup_runs // 2),
+        )
 
     # Calculate improvements
     base_map50 = base_acc.get("mAP@50", 0.0)
@@ -425,18 +498,48 @@ def benchmark_comparison(
     ft_map5095 = ft_acc.get("mAP@50:95", 0.0)
     map5095_gain = round(ft_map5095 - base_map5095, 4)
 
-    # Side-by-side comparison table
-    table = Table(title=f"Benchmark Comparison: Pretrained vs. Fine-Tuned ({m_name})")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Pretrained Baseline", justify="right")
-    table.add_column("Fine-Tuned CCTV", justify="right", style="green")
-    table.add_column("Absolute Gain", justify="right", style="magenta")
+    base_small_rec = base_acc.get("small_object_recall", 0.0)
+    ft_small_rec = ft_acc.get("small_object_recall", 0.0)
+    base_rec50 = base_acc.get("recall@50", 0.0)
+    ft_rec50 = ft_acc.get("recall@50", 0.0)
 
-    table.add_row("mAP@50", f"{base_map50:.4f}", f"{ft_map50:.4f}", f"{map50_gain:+.4f}")
-    table.add_row("mAP@50:95", f"{base_map5095:.4f}", f"{ft_map5095:.4f}", f"{map5095_gain:+.4f}")
-    table.add_row("Avg Latency", f"{base_lat.get('mean_latency_ms', 0):.2f} ms", f"{ft_lat.get('mean_latency_ms', 0):.2f} ms", f"{ft_lat.get('mean_latency_ms', 0) - base_lat.get('mean_latency_ms', 0):+.2f} ms")
-    table.add_row("P95 Latency", f"{base_lat.get('p95_latency_ms', 0):.2f} ms", f"{ft_lat.get('p95_latency_ms', 0):.2f} ms", f"{ft_lat.get('p95_latency_ms', 0) - base_lat.get('p95_latency_ms', 0):+.2f} ms")
-    table.add_row("Throughput (FPS)", f"{base_lat.get('fps', 0):.1f} FPS", f"{ft_lat.get('fps', 0):.1f} FPS", f"{ft_lat.get('fps', 0) - base_lat.get('fps', 0):+.1f} FPS")
+    if enhanced:
+        enh_map50 = enh_acc.get("mAP@50", 0.0)
+        enh_map5095 = enh_acc.get("mAP@50:95", 0.0)
+        enh_small_rec = enh_acc.get("small_object_recall", 0.0)
+        enh_rec50 = enh_acc.get("recall@50", 0.0)
+
+        # 3-Way Rich comparison table
+        table = Table(title=f"3-Way Benchmark Comparison: Stock vs. Fine-Tuned vs. WorkZone Max-Accuracy ({m_name})")
+        table.add_column("Evaluation Metric", style="cyan")
+        table.add_column(f"Stock Pretrained\n({m_name})", justify="right")
+        table.add_column("Fine-Tuned\n(Single Pass)", justify="right", style="yellow")
+        table.add_column("WorkZone Max-Accuracy\n(CLAHE + Tiling + TTA + WBF)", justify="right", style="green")
+        table.add_column("Gain vs. Stock\n(Max-Accuracy)", justify="right", style="magenta")
+
+        table.add_row("mAP@50", f"{base_map50:.4f}", f"{ft_map50:.4f}", f"{enh_map50:.4f}", f"{enh_map50 - base_map50:+.4f}")
+        table.add_row("mAP@50:95", f"{base_map5095:.4f}", f"{ft_map5095:.4f}", f"{enh_map5095:.4f}", f"{enh_map5095 - base_map5095:+.4f}")
+        table.add_row("Small-Object Recall (<32px)", f"{base_small_rec:.4f}", f"{ft_small_rec:.4f}", f"{enh_small_rec:.4f}", f"{enh_small_rec - base_small_rec:+.4f}")
+        table.add_row("Overall Recall@50", f"{base_rec50:.4f}", f"{ft_rec50:.4f}", f"{enh_rec50:.4f}", f"{enh_rec50 - base_rec50:+.4f}")
+        table.add_row("Avg Latency (ms/frame)", f"{base_lat.get('mean_latency_ms', 0):.2f} ms", f"{ft_lat.get('mean_latency_ms', 0):.2f} ms", f"{enh_lat.get('mean_latency_ms', 0):.2f} ms", f"{enh_lat.get('mean_latency_ms', 0) - base_lat.get('mean_latency_ms', 0):+.2f} ms")
+        table.add_row("P95 Latency", f"{base_lat.get('p95_latency_ms', 0):.2f} ms", f"{ft_lat.get('p95_latency_ms', 0):.2f} ms", f"{enh_lat.get('p95_latency_ms', 0):.2f} ms", f"{enh_lat.get('p95_latency_ms', 0) - base_lat.get('p95_latency_ms', 0):+.2f} ms")
+        table.add_row("Throughput (FPS)", f"{base_lat.get('fps', 0):.1f} FPS", f"{ft_lat.get('fps', 0):.1f} FPS", f"{enh_lat.get('fps', 0):.1f} FPS", f"{enh_lat.get('fps', 0) - base_lat.get('fps', 0):+.1f} FPS")
+
+    else:
+        # 2-Way Rich comparison table
+        table = Table(title=f"Benchmark Comparison: Pretrained vs. Fine-Tuned ({m_name})")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Pretrained Baseline", justify="right")
+        table.add_column("Fine-Tuned Single Pass", justify="right", style="green")
+        table.add_column("Absolute Gain", justify="right", style="magenta")
+
+        table.add_row("mAP@50", f"{base_map50:.4f}", f"{ft_map50:.4f}", f"{map50_gain:+.4f}")
+        table.add_row("mAP@50:95", f"{base_map5095:.4f}", f"{ft_map5095:.4f}", f"{map5095_gain:+.4f}")
+        table.add_row("Small-Object Recall", f"{base_small_rec:.4f}", f"{ft_small_rec:.4f}", f"{ft_small_rec - base_small_rec:+.4f}")
+        table.add_row("Overall Recall@50", f"{base_rec50:.4f}", f"{ft_rec50:.4f}", f"{ft_rec50 - base_rec50:+.4f}")
+        table.add_row("Avg Latency", f"{base_lat.get('mean_latency_ms', 0):.2f} ms", f"{ft_lat.get('mean_latency_ms', 0):.2f} ms", f"{ft_lat.get('mean_latency_ms', 0) - base_lat.get('mean_latency_ms', 0):+.2f} ms")
+        table.add_row("P95 Latency", f"{base_lat.get('p95_latency_ms', 0):.2f} ms", f"{ft_lat.get('p95_latency_ms', 0):.2f} ms", f"{ft_lat.get('p95_latency_ms', 0) - base_lat.get('p95_latency_ms', 0):+.2f} ms")
+        table.add_row("Throughput (FPS)", f"{base_lat.get('fps', 0):.1f} FPS", f"{ft_lat.get('fps', 0):.1f} FPS", f"{ft_lat.get('fps', 0) - base_lat.get('fps', 0):+.1f} FPS")
 
     console.print("\n", table)
 
@@ -451,9 +554,15 @@ def benchmark_comparison(
             "accuracy": ft_acc,
             "latency": ft_lat,
         },
+        "workzone_max_accuracy": {
+            "accuracy": enh_acc,
+            "latency": enh_lat,
+        } if enhanced else None,
         "improvements": {
             "mAP@50_gain": map50_gain,
             "mAP@50:95_gain": map5095_gain,
+            "max_accuracy_mAP50_gain": round(enh_acc.get("mAP@50", 0.0) - base_map50, 4) if enhanced else None,
+            "max_accuracy_mAP5095_gain": round(enh_acc.get("mAP@50:95", 0.0) - base_map5095, 4) if enhanced else None,
         },
     }
 

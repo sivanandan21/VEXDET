@@ -2,9 +2,24 @@
 # Supported architectures: RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge
 
 model:
-  name: "RFDETRSmall"
+  name: "RFDETRLarge"
   pretrain_weights: null
   device: "auto"
+
+preprocess:
+  enable_clahe: true
+  clip_limit: 2.0
+  tile_grid: [8, 8]
+
+tiling:
+  enable_tiling: false
+  slice_size: 640
+  overlap_ratio: 0.25
+  iou_threshold: 0.55
+
+tta:
+  enable_tta: false
+  flip_horizontal: true
 
 detection:
   classes:
@@ -37,10 +52,10 @@ dataset:
   min_box_height: 16
 
 training:
-  epochs: 15
-  batch_size: 4
-  grad_accum_steps: 2
-  lr: 0.0001
+  epochs: 30
+  batch_size: 2
+  grad_accum_steps: 8
+  lr: 0.00008
   early_stopping: 5
   output_dir: "models/checkpoints"
   resume_path: null

@@ -69,7 +69,12 @@ def test_invalid_and_non_apache_models_rejected(invalid_model: str):
 def test_pipeline_config_defaults(tmp_path: Path):
     """Verify default config initialization."""
     cfg = PipelineConfig()
-    assert cfg.model.name == "RFDETRSmall"
+    assert cfg.model.name == "RFDETRLarge"
+    assert cfg.preprocess.enable_clahe is True
+    assert cfg.training.epochs == 30
+    assert cfg.training.batch_size == 2
+    assert cfg.training.grad_accum_steps == 8
+    assert cfg.training.lr == 0.00008
     assert "person" in cfg.detection.classes
     assert cfg.extraction.blur_threshold == 100.0
     assert cfg.hard_mining.min_confidence == 0.15
@@ -273,3 +278,82 @@ def test_opencv_color_conversion_rule():
     # In RGB, red is at channel 0, blue at channel 2
     assert rgb_frame[:, :, 0].max() == 0
     assert rgb_frame[:, :, 2].max() == 255
+
+
+# ==========================================
+# 7. HIGH-ACCURACY MODULES TESTS
+# ==========================================
+
+from src.preprocess import enhance_cctv_frame
+from src.enhanced_inference import (
+    compute_iou_matrix,
+    fuse_boxes_wbf,
+    generate_image_slices,
+    WorkZoneEnhancedPredictor,
+)
+
+
+def test_clahe_enhancement():
+    """Verify CLAHE enhancement preserves shape and dynamic range."""
+    dark_img = np.full((120, 160, 3), 30, dtype=np.uint8)
+    dark_img[40:80, 40:80, :] = 45
+    enhanced = enhance_cctv_frame(dark_img, clip_limit=2.0)
+    assert enhanced.shape == dark_img.shape
+    assert enhanced.dtype == np.uint8
+    assert enhanced.mean() >= dark_img.mean()
+
+
+def test_generate_image_slices():
+    """Verify image slicing generates overlapping windows covering canvas."""
+    slices = generate_image_slices(1080, 1920, slice_size=640, overlap_ratio=0.25)
+    assert len(slices) > 1
+    for x1, y1, x2, y2 in slices:
+        assert 0 <= x1 < x2 <= 1920
+        assert 0 <= y1 < y2 <= 1080
+
+
+def test_fuse_boxes_wbf():
+    """Verify Weighted Boxes Fusion merges overlapping detections into centroid."""
+    boxes = [
+        [100.0, 100.0, 200.0, 300.0],
+        [104.0, 98.0, 202.0, 305.0],
+        [500.0, 500.0, 600.0, 700.0],
+    ]
+    scores = [0.80, 0.90, 0.75]
+    class_ids = [0, 0, 0]
+    class_names = ["person", "person", "person"]
+
+    fused = fuse_boxes_wbf(boxes, scores, class_ids, class_names, iou_threshold=0.55)
+    assert len(fused["boxes"]) == 2
+    assert fused["scores"][0] > 0.85
+
+
+def test_workzone_enhanced_predictor():
+    """Verify WorkZoneEnhancedPredictor wraps base predictor with CLAHE, TTA, Slicing & WBF."""
+    class MockPredictor:
+        def predict(self, img, threshold=0.35):
+            h, w = img.shape[:2]
+            cx, cy = w // 2, h // 2
+            box = np.array([[cx - 20, cy - 40, cx + 20, cy + 40]], dtype=np.float32)
+            conf = np.array([0.70], dtype=np.float32)
+            cids = np.array([0], dtype=np.int32)
+            class _MockDets:
+                xyxy = box
+                confidence = conf
+                class_id = cids
+                data = {"class_name": ["person"]}
+            return _MockDets()
+
+    mock = MockPredictor()
+    enhanced_p = WorkZoneEnhancedPredictor(
+        base_predictor=mock,
+        enable_clahe=True,
+        enable_tiling=True,
+        enable_tta=True,
+        slice_size=640,
+    )
+    img = np.zeros((720, 1280, 3), dtype=np.uint8)
+    dets = enhanced_p.predict(img, threshold=0.35)
+    assert len(dets) > 0
+    assert hasattr(dets, "xyxy")
+    assert hasattr(dets, "confidence")

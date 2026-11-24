@@ -36,7 +36,7 @@ console = Console()
 
 @app.command("download")
 def download_cmd(
-    model_name: str = typer.Option("RFDETRSmall", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
+    model_name: str = typer.Option("RFDETRLarge", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
     weights: Optional[str] = typer.Option(None, "--weights", "-w", help="Path to custom checkpoint"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
@@ -117,6 +117,9 @@ def mine_cmd(
     max_conf: Optional[float] = typer.Option(None, "--max-conf", help="Upper bound of ambiguous confidence"),
     model_name: Optional[str] = typer.Option(None, "--model-name", "-m", help="Model name"),
     checkpoint: Optional[str] = typer.Option(None, "--checkpoint", help="Path to checkpoint weights"),
+    enhanced: bool = typer.Option(False, "--enhanced/--no-enhanced", help="Use WorkZone enhanced inference engine"),
+    tiling: Optional[bool] = typer.Option(None, "--tiling/--no-tiling", help="Enable sliced/tiled mining"),
+    tta: Optional[bool] = typer.Option(None, "--tta/--no-tta", help="Enable test-time augmentation"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
     """Mine ambiguous, low-confidence frames for retraining round 2."""
@@ -131,6 +134,9 @@ def mine_cmd(
         checkpoint_path=checkpoint,
         input_frames_dir=input_dir or cfg.hard_mining.input_frames_dir,
         output_dir=output_dir or cfg.hard_mining.output_dir,
+        enhanced=enhanced,
+        enable_tiling=tiling,
+        enable_tta=tta,
         config=cfg.hard_mining,
     )
 
@@ -142,9 +148,12 @@ def evaluate_cmd(
     test_dir: Optional[str] = typer.Option(None, "--test-dir", help="Directory with test images"),
     annotation_file: Optional[str] = typer.Option(None, "--annotation-file", help="COCO test JSON path"),
     report: Optional[str] = typer.Option(None, "--report", help="Output path for benchmark report"),
+    enhanced: bool = typer.Option(True, "--enhanced/--no-enhanced", help="Benchmark 3-way with WorkZone Max-Accuracy engine"),
+    tiling: Optional[bool] = typer.Option(None, "--tiling/--no-tiling", help="Enable sliced/tiled inference"),
+    tta: Optional[bool] = typer.Option(None, "--tta/--no-tta", help="Enable test-time augmentation"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Benchmark Pretrained vs. Fine-Tuned (mAP@50, mAP@50:95, latency ms)."""
+    """Benchmark Pretrained vs. Fine-Tuned vs. WorkZone Max-Accuracy (mAP@50, mAP@50:95, latency ms)."""
     cfg = load_config(config)
     benchmark_comparison(
         model_name=model_name or cfg.model.name,
@@ -152,6 +161,9 @@ def evaluate_cmd(
         test_images_dir=test_dir or cfg.evaluation.test_images_dir,
         annotation_file=annotation_file or cfg.evaluation.test_annotation_file,
         output_report_path=report,
+        enhanced=enhanced,
+        enable_tiling=tiling,
+        enable_tta=tta,
         config=cfg,
     )
 
@@ -177,7 +189,7 @@ def export_cmd(
 
 @app.command("pipeline")
 def full_pipeline_cmd(
-    model_name: str = typer.Option("RFDETRSmall", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
+    model_name: str = typer.Option("RFDETRLarge", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
     """Execute complete end-to-end RF-DETR object detection workflow."""

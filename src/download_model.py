@@ -72,7 +72,7 @@ def download_and_verify_model(
     predictor = create_predictor(model)
     init_time = time.perf_counter() - t1
 
-    # Run verification inference pass on synthetic RGB frame (simulating CCTV 1080p frame)
+    # Run verification inference pass on synthetic RGB frame (simulating 1080p camera frame)
     console.print("[dim]Running verification inference on synthetic 1080p RGB frame...[/dim]")
     dummy_rgb = np.zeros((1080, 1920, 3), dtype=np.uint8)
     # Add dummy pattern

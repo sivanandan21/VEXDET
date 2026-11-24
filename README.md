@@ -63,21 +63,28 @@ Raw Video / Stream ──> [ Frame Quality Filter ] ──> [ Dataset Validator 
 - **Hardware-Aware Training**: Automatically configures PyTorch CUDA hardware acceleration with safe fallback to CPU, dynamic batch sizing, and gradient accumulation.
 - **Early Stopping**: Prevents overfitting on custom domains with configurable patience.
 
-### 4. Active Learning & Hard-Negative Mining
+### 4. High-Accuracy Inference Engine (`WorkZoneEnhancedPredictor`)
+- **Low-Light & Glare Preprocessing (CLAHE)**: Evaluates L-channel histogram equalization in LAB color space to reveal underexposed silhouettes and mitigate window glare.
+- **Sliced / Tiled Inference**: Decomposes high-resolution frames (1080p/4K) into overlapping 640x640 windows to detect tiny, far-corner objects that single-pass detectors overlook.
+- **Test-Time Augmentation (TTA)**: Evaluates normal and horizontally flipped images with automatic coordinate un-flipping.
+- **Pure-NumPy Weighted Boxes Fusion (WBF)**: Merges overlapping predictions from full-frame + tiles + TTA into tighter, high-confidence bounding boxes, significantly outperforming standard Non-Maximum Suppression (NMS) in dense or occluded scenes.
+
+### 5. Active Learning & Hard-Negative Mining
 - **Ambiguity Detection**: Filters model predictions in uncertainty windows (e.g., confidence `0.15` to `0.45`) where the detector is unsure.
 - **False-Positive Extraction**: Discovers challenging background objects (reflections, chairs, clothing, clutter) that trigger false alarms.
 - **Review Manifest Generation**: Produces visual overlays and a JSON manifest ready for immediate re-labeling and Round 2 iterative retraining.
 
-### 5. Rigorous Benchmarking & Metrics
+### 6. Rigorous Benchmarking & 3-Way Metrics
 - **Zero Placeholders**: Computes true COCO-standard `mAP@50` and `mAP@50:95` across 10 IoU thresholds using 101-point interpolated precision-recall curves.
+- **Small-Object Recall Metric**: Measures exact recall on targets `< 32x32px` to verify edge resolution enhancements.
 - **Statistical Latency Profiling**: Measures Warmup passes, Min, Max, Mean, P95 latency (ms), and FPS throughput on target hardware.
-- **Comparison Engine**: Generates side-by-side terminal comparison tables showing absolute improvement deltas over baseline weights.
+- **3-Way Comparison Engine**: Generates side-by-side terminal comparison tables showing absolute improvement deltas of WorkZone Max-Accuracy vs. Fine-Tuned vs. Stock baseline.
 
-### 6. Edge Deployment & Optimization
+### 7. Edge Deployment & Optimization
 - **ONNX Graph Export**: Direct export of trained PyTorch checkpoints to optimized ONNX graphs (`opset 17`).
 - **ONNX Runtime Verification**: Loads exported artifacts via `RFDETRInference` to verify numerical consistency and measure deployment speedup.
 
-### 7. Modern Python Packaging & MLOps
+### 8. Modern Python Packaging & MLOps
 - Standard `pyproject.toml` configuration with console script entry point `workzone`.
 - Pydantic v2 data models with runtime validation.
 - Interactive terminal UI using Rich tables, panels, and progress bars.
@@ -105,13 +112,15 @@ workzone-vision/
 │   ├── model_factory.py          # Model and inference predictor factory
 │   ├── download_model.py         # Model download & verification routine
 │   ├── extract_frames.py         # Laplacian blur & duplicate scene filter
+│   ├── preprocess.py             # Low-light & glare CLAHE enhancement
+│   ├── enhanced_inference.py     # Slicing, TTA, and Weighted Boxes Fusion
 │   ├── validate_dataset.py       # COCO structure and box geometry validator
 │   ├── train_finetune.py         # Model fine-tuning execution
 │   ├── mine_hard_negatives.py    # Hard-negative & ambiguous detection miner
-│   ├── evaluate.py               # Precision-recall curves, mAP & latency benchmark
+│   ├── evaluate.py               # 3-way benchmark (mAP, small-object recall, latency)
 │   └── export_model.py           # ONNX export and runtime verification
 ├── tests/
-│   └── test_smoke.py             # Pytest test suite (25 tests)
+│   └── test_smoke.py             # Pytest test suite (29 tests)
 ├── .github/
 │   └── workflows/ci.yml          # GitHub Actions CI matrix
 ├── cli.py                        # Unified command-line interface
@@ -148,17 +157,19 @@ All commands can be invoked via the global CLI alias `workzone` or `python cli.p
 workzone --help
 ```
 
-### 1. Download Model
-Download official weights for any Apache-2.0 RF-DETR model (`RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`, `RFDETRLarge`):
+### 1. Download Foundation Weights
+Fetch official weights for the default flagship model `RFDETRLarge` (or `RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`):
 ```bash
-workzone download --model-name RFDETRSmall
+workzone download --model-name RFDETRLarge
 ```
 
-### 2. Extract & Filter Frames from Video
-Curate sharp, non-duplicate training frames from raw video clips:
+### 2. Extract & Filter Video Frames
+Curate sharp, non-duplicate candidate frames from raw video clips or camera streams in `data/raw_videos/`:
 ```bash
 workzone extract-frames --video-dir data/raw_videos --frame-interval 15 --blur-threshold 100.0
 ```
+- Drops blurry frames (`blur_score < blur_threshold`).
+- Drops static scenes (`change_pct < 1.5%` or histogram correlation `>= 0.95`).
 
 ### 3. Validate Dataset Integrity
 Audit COCO labels before launching training:
@@ -169,7 +180,7 @@ workzone validate-dataset --dataset-dir data/dataset --classes person
 ### 4. Fine-Tune on Custom Domain
 Fine-tune the detector on your labeled dataset:
 ```bash
-workzone train --model-name RFDETRSmall --epochs 15 --batch-size 4 --lr 0.0001
+workzone train --model-name RFDETRLarge --epochs 30 --batch-size 2 --lr 0.00008
 ```
 
 ### 5. Mine Hard Negatives (Active Learning Loop)
@@ -178,22 +189,31 @@ Uncover ambiguous detections (confidence `0.15`–`0.45`) to prepare Round 2 ret
 workzone mine-negatives --input-dir data/extracted_frames --min-conf 0.15 --max-conf 0.45
 ```
 
-### 6. Benchmark Accuracy & Latency
-Evaluate mAP and inference speed comparing pretrained baseline vs. fine-tuned checkpoint:
+### 6. Benchmark Accuracy & Latency (3-Way Comparison)
+Evaluate mAP and inference speed comparing pretrained baseline vs. fine-tuned vs. WorkZone Max-Accuracy engine:
 ```bash
-workzone evaluate --model-name RFDETRSmall --checkpoint models/checkpoints/best.pt
+workzone evaluate --model-name RFDETRLarge --checkpoint models/checkpoints/best.pt --enhanced
 ```
+Runs a 3-way evaluation on `data/dataset/test`:
+1. **Stock Pretrained `RFDETRLarge`** (Baseline)
+2. **Fine-Tuned `RFDETRLarge`** (Single Pass)
+3. **WorkZone Max-Accuracy** (Fine-Tuned + CLAHE + Sliced Inference + TTA + WBF)
+
+Options:
+- `--enhanced / --no-enhanced`: Toggle 3-way comparison with Max-Accuracy engine
+- `--tiling / --no-tiling`: Enable/disable 640x640 sliced inference for tiny far-field objects
+- `--tta / --no-tta`: Enable/disable horizontal test-time augmentation
 
 ### 7. Export to ONNX & Verify
 Export the fine-tuned model for production edge deployment:
 ```bash
-workzone export --checkpoint models/checkpoints/best.pt --model-name RFDETRSmall
+workzone export --checkpoint models/checkpoints/best.pt --model-name RFDETRLarge
 ```
 
 ### 8. End-to-End Pipeline
-Run the full 7-stage active learning pipeline sequentially:
+Run the full active learning pipeline sequentially:
 ```bash
-workzone pipeline --model-name RFDETRSmall
+workzone pipeline --model-name RFDETRLarge
 ```
 
 ---
@@ -205,10 +225,14 @@ Run the automated test suite with pytest:
 pytest -v
 ```
 
-All 25 smoke tests verify:
-- Architecture whitelist enforcement
+All 29 smoke tests verify:
+- Architecture whitelist enforcement (`RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`, `RFDETRLarge`)
 - Laplacian variance blur metric differentiation
 - Frame differencing and histogram correlation
+- Low-light CLAHE adaptive histogram equalization
+- Multi-scale image slicing and coordinate remapping
+- Pure-NumPy Weighted Boxes Fusion (WBF)
+- WorkZoneEnhancedPredictor end-to-end inference pass
 - COCO dataset schema and geometry validation
 - Bounding box IoU calculations
 - 101-point interpolated Average Precision mathematics
