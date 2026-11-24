@@ -1,0 +1,50 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Caches and virtual environments
+.pytest_cache/
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data files (preserving .gitkeep files)
+data/raw_videos/*
+!data/raw_videos/.gitkeep
+data/extracted_frames/*
+!data/extracted_frames/.gitkeep
+data/dataset/*
+!data/dataset/.gitkeep
+data/hard_negatives/*
+!data/hard_negatives/.gitkeep
+
+# Checkpoints and models (preserving .gitkeep files)
+models/checkpoints/*
+!models/checkpoints/.gitkeep
+models/exported/*
+!models/exported/.gitkeep
+
+# System and OS files
+.DS_Store
+Thumbs.db

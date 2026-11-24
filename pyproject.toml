@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workzone-vision"
+version = "0.1.0"
+description = "Edge-ready CCTV person-detection fine-tuning, hard-negative mining, and ONNX export pipeline."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "sivanandan21", email = "sivapn721@gmail.com" }
+]
+dependencies = [
+  "rfdetr[train,onnx,stream]>=1.12.0",
+  "supervision>=0.25.0",
+  "opencv-python-headless>=4.8.1.78",
+  "onnxruntime>=1.19.0",
+  "numpy>=1.26.0",
+  "Pillow>=10.0.0",
+  "pydantic>=2.7.0",
+  "pyyaml>=6.0.1",
+  "rich>=13.7.0",
+  "typer>=0.12.0",
+]
+
+[project.scripts]
+workzone = "cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

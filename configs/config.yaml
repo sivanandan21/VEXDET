@@ -1,0 +1,75 @@
+# WorkZone Vision - CCTV Person Detection Pipeline Configuration
+# Supported architectures: RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge
+
+model:
+  name: "RFDETRSmall"
+  pretrain_weights: null
+  device: "auto"
+
+detection:
+  classes:
+    - "person"
+  confidence_threshold: 0.35
+  default_threshold: 0.50
+  class_thresholds:
+    person: 0.35
+    head: 0.35
+
+extraction:
+  raw_video_dir: "data/raw_videos"
+  extracted_frames_dir: "data/extracted_frames"
+  frame_interval: 15
+  blur_threshold: 100.0
+  duplicate_similarity_threshold: 0.95
+  min_frame_change_pct: 1.5
+
+dataset:
+  dataset_dir: "data/dataset"
+  train_split: "train"
+  val_split: "val"
+  test_split: "test"
+  annotation_file: "_annotations.coco.json"
+  min_box_width: 8
+  min_box_height: 16
+
+training:
+  epochs: 15
+  batch_size: 4
+  grad_accum_steps: 2
+  lr: 0.0001
+  early_stopping: 5
+  output_dir: "models/checkpoints"
+  resume_path: null
+
+hard_mining:
+  input_frames_dir: "data/extracted_frames"
+  output_dir: "data/hard_negatives"
+  min_confidence: 0.15
+  max_confidence: 0.45
+  iou_threshold: 0.5
+  max_samples_per_video: 500
+
+evaluation:
+  test_images_dir: "data/dataset/test"
+  test_annotation_file: "data/dataset/test/_annotations.coco.json"
+  iou_thresholds:
+    - 0.50
+    - 0.55
+    - 0.60
+    - 0.65
+    - 0.70
+    - 0.75
+    - 0.80
+    - 0.85
+    - 0.90
+    - 0.95
+  confidence_threshold: 0.35
+  benchmark_runs: 50
+  warmup_runs: 10
+
+export:
+  checkpoint_path: "models/checkpoints/best.pt"
+  output_dir: "models/exported"
+  format: "onnx"
+  opset: 17
+  simplify: true
