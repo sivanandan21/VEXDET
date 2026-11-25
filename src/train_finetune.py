@@ -1,4 +1,4 @@
-"""Fine-tuning module for WorkZone Vision RF-DETR models.
+"""Fine-tuning module for VEXDET RF-DETR models.
 
 Supports training on custom camera and vision datasets for single-class
 or multi-class object detection.

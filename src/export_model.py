@@ -1,5 +1,6 @@
-"""Export fine-tuned RF-DETR models to ONNX format and verify runtime accuracy."""
+"""Export fine-tuned RF-DETR models to ONNX format and verify runtime accuracy with VEXDET."""
 
+import inspect
 import json
 import shutil
 import time
@@ -53,7 +54,7 @@ def export_to_onnx(
 
     console.print(
         Panel(
-            f"[bold cyan]RF-DETR ONNX Model Export & Verification[/bold cyan]\n"
+            f"[bold cyan]VEXDET RF-DETR ONNX Model Export & Verification[/bold cyan]\n"
             f"Model Architecture: [yellow]{m_name}[/yellow]\n"
             f"Source Checkpoint: [blue]{cp_path}[/blue]\n"
             f"Export Directory: [green]{out_dir.resolve()}[/green]\n"
@@ -93,12 +94,27 @@ def export_to_onnx(
 
     export_success = True
     export_error = None
-    expected_onnx_name = f"{m_name.lower()}_finetuned.onnx"
+    expected_onnx_name = f"vexdet_{m_name.lower()}.onnx"
     target_onnx_path = out_dir / expected_onnx_name
+
+    # Inspect model.export signature to pass supported configuration options
+    sig = inspect.signature(model.export)
+    export_kwargs: Dict[str, Any] = {"format": "onnx"}
+    if "opset" in sig.parameters and hasattr(exp_cfg, "opset"):
+        export_kwargs["opset"] = exp_cfg.opset
+        console.print(f"[dim]Passing opset={exp_cfg.opset} to model.export()[/dim]")
+    elif hasattr(exp_cfg, "opset"):
+        console.print(f"[dim]Note: 'opset' handled internally by rfdetr.[/dim]")
+
+    if "simplify" in sig.parameters and hasattr(exp_cfg, "simplify"):
+        export_kwargs["simplify"] = exp_cfg.simplify
+        console.print(f"[dim]Passing simplify={exp_cfg.simplify} to model.export()[/dim]")
+    elif hasattr(exp_cfg, "simplify"):
+        console.print(f"[dim]Note: 'simplify' handled internally by rfdetr.[/dim]")
 
     try:
         # Export model graph to ONNX
-        model.export(format="onnx")
+        model.export(**export_kwargs)
         # Find where rfdetr saved the onnx file and move to target_onnx_path if needed
         possible_exported = list(Path(".").glob("*.onnx")) + list(out_dir.glob("*.onnx"))
         if possible_exported:
@@ -108,7 +124,7 @@ def export_to_onnx(
     except Exception as e:
         export_success = False
         export_error = str(e)
-        console.print(f"[bold red]model.export(format='onnx') encountered error:[/bold red] {e}")
+        console.print(f"[bold red]model.export encountered error:[/bold red] {e}")
 
     export_duration = time.perf_counter() - t_exp_start
 

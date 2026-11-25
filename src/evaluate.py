@@ -1,4 +1,4 @@
-"""Evaluation and benchmarking module for WorkZone Vision models.
+"""Evaluation and benchmarking module for VEXDET models.
 
 Computes:
 1. mAP@50 (Mean Average Precision at IoU 0.50).
@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from src.config import EvaluationConfig, PipelineConfig, load_config
-from src.enhanced_inference import WorkZoneEnhancedPredictor
+from src.enhanced_inference import VexdetEnhancedPredictor, WorkZoneEnhancedPredictor
 from src.mine_hard_negatives import extract_detections_data
 from src.model_factory import create_class_thresholds, create_model, create_predictor
 
@@ -163,8 +163,9 @@ def evaluate_dataset_accuracy(
         try:
             raw_dets = predictor.predict(image_rgb, threshold=confidence_threshold)
             dets = extract_detections_data(raw_dets)
-        except Exception:
-            dets = []
+        except Exception as exc:
+            console.print(f"[bold red]Inference error on image '{fname}': {exc}[/bold red]")
+            raise RuntimeError(f"Evaluation aborted: inference failed on image '{fname}' ({exc})") from exc
 
         for d in dets:
             cname = d.get("class_name", "person")
@@ -214,23 +215,28 @@ def evaluate_dataset_accuracy(
                 p_iid = pred["image_id"]
                 p_box = pred["box_xyxy"]
 
-                img_gts = [g for g in gt_by_image.get(p_iid, []) if g["class_name"] == cname]
+                # Track GTs with their original indices inside gt_by_image[p_iid]
+                img_gts = [
+                    (orig_idx, g)
+                    for orig_idx, g in enumerate(gt_by_image.get(p_iid, []))
+                    if g["class_name"] == cname
+                ]
                 if not img_gts:
                     fp[p_idx] = 1.0
                     continue
 
                 best_iou = 0.0
-                best_gt_idx = -1
-                for g_idx, g_entry in enumerate(img_gts):
+                best_orig_idx = -1
+                for orig_idx, g_entry in img_gts:
                     iou_val = compute_box_iou(p_box, g_entry["box_xyxy"])
                     if iou_val > best_iou:
                         best_iou = iou_val
-                        best_gt_idx = g_idx
+                        best_orig_idx = orig_idx
 
-                if best_iou >= iou_thresh and best_gt_idx >= 0:
-                    if not gt_matched[p_iid][best_gt_idx]:
+                if best_iou >= iou_thresh and best_orig_idx >= 0:
+                    if not gt_matched[p_iid][best_orig_idx]:
                         tp[p_idx] = 1.0
-                        gt_matched[p_iid][best_gt_idx] = True
+                        gt_matched[p_iid][best_orig_idx] = True
                     else:
                         # Duplicate detection on same ground truth is a false positive
                         fp[p_idx] = 1.0
@@ -240,10 +246,10 @@ def evaluate_dataset_accuracy(
             # Record recall and small object metrics at IoU 0.50
             if abs(iou_thresh - 0.50) < 1e-4:
                 for iid, gts in gt_by_image.items():
-                    for g_idx, g in enumerate(gts):
+                    for orig_idx, g in enumerate(gts):
                         if g["class_name"] == cname:
                             all_gt_total += 1
-                            is_matched = gt_matched[iid][g_idx]
+                            is_matched = gt_matched[iid][orig_idx]
                             if is_matched:
                                 all_gt_matched += 1
                             if g.get("is_small", False):
@@ -353,7 +359,7 @@ def benchmark_comparison(
     enable_tta: Optional[bool] = None,
     config: Optional[PipelineConfig] = None,
 ) -> Dict[str, Any]:
-    """Benchmark and compare Pretrained baseline, Fine-Tuned, and WorkZone Max-Accuracy modes.
+    """Benchmark and compare Pretrained baseline, Fine-Tuned, and VEXDET Max-Accuracy modes.
     
     Calculates:
     - mAP@50
@@ -368,7 +374,7 @@ def benchmark_comparison(
         test_images_dir: Directory containing test images.
         annotation_file: Path to test split COCO JSON.
         output_report_path: Path to write JSON report.
-        enhanced: Whether to run 3-way benchmark with WorkZone Max-Accuracy.
+        enhanced: Whether to run 3-way benchmark with VEXDET Max-Accuracy.
         enable_tiling: Override config for tiling mode in enhanced pass.
         enable_tta: Override config for TTA mode in enhanced pass.
         config: PipelineConfig instance.
@@ -455,13 +461,13 @@ def benchmark_comparison(
         ft_acc = {"mAP@50": base_acc.get("mAP@50", 0.0), "mAP@50:95": base_acc.get("mAP@50:95", 0.0), "small_object_recall": base_acc.get("small_object_recall", 0.0), "recall@50": base_acc.get("recall@50", 0.0), "per_class_AP@50": {}}
         ft_lat = base_lat.copy()
 
-    # 3. WorkZone Max-Accuracy (Fine-Tuned + CLAHE + Slicing + TTA + WBF)
+    # 3. VEXDET Max-Accuracy (Fine-Tuned + CLAHE + Slicing + TTA + WBF)
     enh_acc: Dict[str, Any] = {}
     enh_lat: Dict[str, Any] = {}
 
     if enhanced:
-        console.print(f"\n[bold green]3. Evaluating WorkZone Max-Accuracy (CLAHE + Slicing + TTA + WBF)...[/bold green]")
-        enh_predictor = WorkZoneEnhancedPredictor.from_config(
+        console.print(f"\n[bold green]3. Evaluating VEXDET Max-Accuracy (CLAHE + Slicing + TTA + WBF)...[/bold green]")
+        enh_predictor = VexdetEnhancedPredictor.from_config(
             base_predictor=ft_predictor,
             config=config,
             force_enhanced=True,
@@ -510,11 +516,11 @@ def benchmark_comparison(
         enh_rec50 = enh_acc.get("recall@50", 0.0)
 
         # 3-Way Rich comparison table
-        table = Table(title=f"3-Way Benchmark Comparison: Stock vs. Fine-Tuned vs. WorkZone Max-Accuracy ({m_name})")
+        table = Table(title=f"3-Way Benchmark Comparison: Stock vs. Fine-Tuned vs. VEXDET Max-Accuracy ({m_name})")
         table.add_column("Evaluation Metric", style="cyan")
         table.add_column(f"Stock Pretrained\n({m_name})", justify="right")
         table.add_column("Fine-Tuned\n(Single Pass)", justify="right", style="yellow")
-        table.add_column("WorkZone Max-Accuracy\n(CLAHE + Tiling + TTA + WBF)", justify="right", style="green")
+        table.add_column("VEXDET Max-Accuracy\n(CLAHE + Tiling + TTA + WBF)", justify="right", style="green")
         table.add_column("Gain vs. Stock\n(Max-Accuracy)", justify="right", style="magenta")
 
         table.add_row("mAP@50", f"{base_map50:.4f}", f"{ft_map50:.4f}", f"{enh_map50:.4f}", f"{enh_map50 - base_map50:+.4f}")
@@ -554,6 +560,10 @@ def benchmark_comparison(
             "accuracy": ft_acc,
             "latency": ft_lat,
         },
+        "vexdet_max_accuracy": {
+            "accuracy": enh_acc,
+            "latency": enh_lat,
+        } if enhanced else None,
         "workzone_max_accuracy": {
             "accuracy": enh_acc,
             "latency": enh_lat,

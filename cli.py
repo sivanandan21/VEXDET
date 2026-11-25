@@ -1,4 +1,4 @@
-"""WorkZone Vision CLI.
+"""VEXDET CLI — Vision Extraction Detector.
 
 Commands:
   download          Download and verify RF-DETR model weights
@@ -8,6 +8,7 @@ Commands:
   mine-negatives    Mine hard-negative and ambiguous frames
   evaluate          Benchmark Pretrained vs. Fine-Tuned (mAP@50, mAP@50:95, latency)
   export            Export checkpoint to ONNX format and verify
+  predict           Run real-time vision detection on images, videos, or camera feeds
   pipeline          Run full end-to-end accuracy pipeline
 """
 
@@ -23,15 +24,32 @@ from src.evaluate import benchmark_comparison
 from src.export_model import export_to_onnx
 from src.extract_frames import process_video_directory
 from src.mine_hard_negatives import mine_hard_negatives
+from src.predict import run_predict
 from src.train_finetune import train_model
 from src.validate_dataset import validate_cctv_dataset
 
 app = typer.Typer(
-    name="workzone",
-    help="WorkZone Vision: Edge-ready real-time object detection fine-tuning, active learning, and ONNX export pipeline.",
+    name="vexdet",
+    help="VEXDET — Apache-2.0 Real-Time Vision Detection Engine",
     add_completion=False,
 )
 console = Console()
+
+
+def version_callback(value: bool):
+    if value:
+        console.print("vexdet 0.1.0")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-v", callback=version_callback, is_eager=True, help="Show VEXDET version and exit."
+    ),
+):
+    """VEXDET — Apache-2.0 Real-Time Vision Detection Engine."""
+    pass
 
 
 @app.command("download")
@@ -117,7 +135,7 @@ def mine_cmd(
     max_conf: Optional[float] = typer.Option(None, "--max-conf", help="Upper bound of ambiguous confidence"),
     model_name: Optional[str] = typer.Option(None, "--model-name", "-m", help="Model name"),
     checkpoint: Optional[str] = typer.Option(None, "--checkpoint", help="Path to checkpoint weights"),
-    enhanced: bool = typer.Option(False, "--enhanced/--no-enhanced", help="Use WorkZone enhanced inference engine"),
+    enhanced: bool = typer.Option(False, "--enhanced/--no-enhanced", help="Use VEXDET enhanced inference engine"),
     tiling: Optional[bool] = typer.Option(None, "--tiling/--no-tiling", help="Enable sliced/tiled mining"),
     tta: Optional[bool] = typer.Option(None, "--tta/--no-tta", help="Enable test-time augmentation"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
@@ -148,12 +166,12 @@ def evaluate_cmd(
     test_dir: Optional[str] = typer.Option(None, "--test-dir", help="Directory with test images"),
     annotation_file: Optional[str] = typer.Option(None, "--annotation-file", help="COCO test JSON path"),
     report: Optional[str] = typer.Option(None, "--report", help="Output path for benchmark report"),
-    enhanced: bool = typer.Option(True, "--enhanced/--no-enhanced", help="Benchmark 3-way with WorkZone Max-Accuracy engine"),
+    enhanced: bool = typer.Option(True, "--enhanced/--no-enhanced", help="Benchmark 3-way with VEXDET Max-Accuracy engine"),
     tiling: Optional[bool] = typer.Option(None, "--tiling/--no-tiling", help="Enable sliced/tiled inference"),
     tta: Optional[bool] = typer.Option(None, "--tta/--no-tta", help="Enable test-time augmentation"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
 ):
-    """Benchmark Pretrained vs. Fine-Tuned vs. WorkZone Max-Accuracy (mAP@50, mAP@50:95, latency ms)."""
+    """Benchmark Pretrained vs. Fine-Tuned vs. VEXDET Max-Accuracy (mAP@50, mAP@50:95, latency ms)."""
     cfg = load_config(config)
     benchmark_comparison(
         model_name=model_name or cfg.model.name,
@@ -187,6 +205,39 @@ def export_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command("predict")
+def predict_cmd(
+    source: str = typer.Argument(..., help="Path to image, video file, directory of images, or webcam ID ('0')"),
+    model_name: Optional[str] = typer.Option(None, "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
+    checkpoint: Optional[str] = typer.Option(None, "--checkpoint", "-w", help="Path to custom PyTorch checkpoint (.pt)"),
+    onnx: Optional[str] = typer.Option(None, "--onnx", help="Path to exported ONNX model (.onnx)"),
+    threshold: Optional[float] = typer.Option(None, "--threshold", "-t", help="Confidence threshold"),
+    enhanced: bool = typer.Option(False, "--enhanced/--no-enhanced", help="Use VEXDET enhanced inference (CLAHE + Slicing + TTA + WBF)"),
+    tiling: Optional[bool] = typer.Option(None, "--tiling/--no-tiling", help="Toggle sliced/tiled window inference"),
+    tta: Optional[bool] = typer.Option(None, "--tta/--no-tta", help="Toggle horizontal test-time augmentation"),
+    clahe: Optional[bool] = typer.Option(None, "--clahe/--no-clahe", help="Toggle CLAHE dynamic range expansion"),
+    output_dir: str = typer.Option("runs/predict", "--output-dir", "-o", help="Directory to save annotated visuals"),
+    save: bool = typer.Option(True, "--save/--no-save", help="Save annotated images or videos"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+):
+    """Run real-time vision detection on images, video files, or camera streams."""
+    cfg = load_config(config)
+    run_predict(
+        source=source,
+        model_name=model_name or cfg.model.name,
+        checkpoint_path=checkpoint,
+        onnx_path=onnx,
+        threshold=threshold,
+        enhanced=enhanced,
+        enable_tiling=tiling,
+        enable_tta=tta,
+        enable_clahe=clahe,
+        output_dir=output_dir,
+        save=save,
+        config=cfg,
+    )
+
+
 @app.command("pipeline")
 def full_pipeline_cmd(
     model_name: str = typer.Option("RFDETRLarge", "--model-name", "-m", help="RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge"),
@@ -198,7 +249,7 @@ def full_pipeline_cmd(
 
     console.print(
         Panel(
-            "[bold green]Starting End-to-End WorkZone Vision Pipeline[/bold green]\n"
+            "[bold green]Starting End-to-End VEXDET Pipeline[/bold green]\n"
             "Stages:\n"
             " 1. Download & verify Apache-2.0 RF-DETR model\n"
             " 2. Extract & filter high-quality video frames\n"
@@ -241,7 +292,7 @@ def full_pipeline_cmd(
     console.print("\n[bold]Stage 7: ONNX Export & Verification[/bold]")
     export_to_onnx(checkpoint_path=best_checkpoint, model_name=model_name, config=cfg.export)
 
-    console.print("\n[bold green]✓ Full WorkZone Vision Pipeline completed successfully![/bold green]")
+    console.print("\n[bold green]✓ Full VEXDET Pipeline completed successfully![/bold green]")
 
 
 if __name__ == "__main__":

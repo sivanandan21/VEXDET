@@ -1,4 +1,4 @@
-# WorkZone Vision - Real-Time Object Detection & Video Stream Pipeline Configuration
+# VEXDET (Vision Extraction Detector) - Real-Time Object Detection & Video Stream Pipeline Configuration
 # Supported architectures: RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge
 
 model:
@@ -87,8 +87,9 @@ evaluation:
   warmup_runs: 10
 
 export:
-  checkpoint_path: "models/checkpoints/best.pt"
+  checkpoint_path: "models/checkpoints/vexdet_v1.pt"
   output_dir: "models/exported"
+  artifact_name: "vexdet_v1"
   format: "onnx"
   opset: 17
   simplify: true

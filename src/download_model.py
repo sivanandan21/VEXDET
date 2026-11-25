@@ -1,4 +1,4 @@
-"""Model download and initialization routines for WorkZone Vision.
+"""Model download and initialization routines for VEXDET (Vision Extraction Detector).
 
 Downloads official weights and verifies inference execution
 across CPU and GPU environments.

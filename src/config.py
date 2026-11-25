@@ -1,4 +1,4 @@
-"""Configuration schema and validation for WorkZone Vision.
+"""Configuration schema and validation for VEXDET (Vision Extraction Detector).
 
 Supported RF-DETR model architectures:
 RFDETRNano, RFDETRSmall, RFDETRMedium, RFDETRLarge.
@@ -203,8 +203,9 @@ class EvaluationConfig(BaseModel):
 
 class ExportConfig(BaseModel):
     """ONNX export and optimization configuration."""
-    checkpoint_path: str = Field(default="models/checkpoints/best.pt")
+    checkpoint_path: str = Field(default="models/checkpoints/vexdet_v1.pt")
     output_dir: str = Field(default="models/exported")
+    artifact_name: str = Field(default="vexdet_v1")
     format: str = Field(default="onnx")
     opset: int = Field(default=17, ge=11)
     simplify: bool = Field(default=True)

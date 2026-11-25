@@ -3,18 +3,19 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "workzone-vision"
+name = "vexdet"
 version = "0.1.0"
-description = "Edge-ready real-time object detection fine-tuning, active learning, hard-negative mining, and ONNX export pipeline powered by Apache-2.0 RF-DETR."
+description = "VEXDET: Apache-2.0 real-time vision detection fine-tuning, active learning, and ONNX export engine."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 keywords = [
-  "computer-vision",
+  "vexdet",
   "object-detection",
+  "computer-vision",
   "rf-detr",
-  "active-learning",
   "onnx",
+  "active-learning",
   "edge-ai",
   "pytorch",
   "video-analytics",
@@ -47,7 +48,13 @@ dependencies = [
   "typer>=0.12.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/sivanandan21/vexdet"
+Repository = "https://github.com/sivanandan21/vexdet"
+Issues = "https://github.com/sivanandan21/vexdet/issues"
+
 [project.scripts]
+vexdet = "cli:app"
 workzone = "cli:app"
 
 [tool.pytest.ini_options]

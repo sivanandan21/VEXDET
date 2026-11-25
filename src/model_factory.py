@@ -1,4 +1,4 @@
-"""Model factory for WorkZone Vision RF-DETR architectures.
+"""Model factory for VEXDET RF-DETR architectures.
 
 Provides factory helpers for model instantiation, inference predictor creation,
 and ONNX runtime initialization across CPU and CUDA backends.

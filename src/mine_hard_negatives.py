@@ -147,9 +147,9 @@ def mine_hard_negatives(
     predictor = create_predictor(model)
 
     if enhanced:
-        from src.enhanced_inference import WorkZoneEnhancedPredictor
-        console.print("[dim]Wrapping predictor with WorkZoneEnhancedPredictor for mining...[/dim]")
-        predictor = WorkZoneEnhancedPredictor.from_config(base_predictor=predictor, config=cfg)
+        from src.enhanced_inference import VexdetEnhancedPredictor
+        console.print("[dim]Wrapping predictor with VexdetEnhancedPredictor for mining...[/dim]")
+        predictor = VexdetEnhancedPredictor.from_config(base_predictor=predictor, config=cfg)
         if enable_tiling is not None:
             predictor.enable_tiling = enable_tiling
         if enable_tta is not None:

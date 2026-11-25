@@ -1,10 +1,10 @@
-"""High-accuracy inference engine for WorkZone Vision.
+"""High-accuracy inference engine for VEXDET.
 
-Provides WorkZoneEnhancedPredictor wrapping standard predictors with:
+Provides VexdetEnhancedPredictor wrapping standard predictors with:
 1. Low-light and glare CLAHE enhancement.
 2. Sliced / Tiled inference for high-res imagery (far-field & tiny objects).
 3. Test-Time Augmentation (horizontal flip).
-4. Pure NumPy Weighted Boxes Fusion (WBF) for precision multi-pass box merging.
+4. Pure NumPy Weighted Boxes Fusion (WBF) with multi-pass spatial normalization.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -76,11 +76,13 @@ def fuse_boxes_wbf(
     class_ids: List[int],
     class_names: Optional[List[str]] = None,
     iou_threshold: float = 0.55,
+    total_passes: Optional[Union[int, float, Any]] = None,
 ) -> Dict[str, Any]:
     """Pure-NumPy implementation of Weighted Boxes Fusion (WBF).
     
     Merges overlapping bounding boxes by clustering and computing
-    confidence-weighted coordinate centroids.
+    confidence-weighted coordinate centroids, normalized by the number
+    of inference passes covering each spatial region.
     
     Args:
         boxes: List of [x1, y1, x2, y2] bounding boxes.
@@ -88,6 +90,7 @@ def fuse_boxes_wbf(
         class_ids: List of integer class IDs.
         class_names: Optional list of class name strings.
         iou_threshold: Minimum IoU to cluster boxes together.
+        total_passes: Integer or callable(cx, cy) returning total inference passes.
         
     Returns:
         Dictionary with fused arrays: 'boxes', 'scores', 'class_ids', 'class_names'.
@@ -170,10 +173,22 @@ def fuse_boxes_wbf(
 
         for cluster in clusters:
             c_scores = np.array(cluster["scores"], dtype=np.float32)
-            # Rescale confidence based on multi-source confirmation
-            mean_score = float(np.mean(c_scores))
-            consensus_boost = 1.0 + 0.08 * min(len(c_scores) - 1, 3)
-            final_score = float(np.clip(mean_score * consensus_boost, 0.0, 1.0))
+            sum_scores = float(np.sum(c_scores))
+            cx = float((cluster["fused_box"][0] + cluster["fused_box"][2]) / 2.0)
+            cy = float((cluster["fused_box"][1] + cluster["fused_box"][3]) / 2.0)
+
+            # Determine pass count covering this cluster's centroid
+            if callable(total_passes):
+                passes_for_box = max(1, int(total_passes(cx, cy)))
+            elif isinstance(total_passes, (int, float)):
+                passes_for_box = max(1, int(total_passes))
+            else:
+                passes_for_box = max(1, len(c_scores))
+
+            # Multi-pass normalized score (downweights single-pass outliers)
+            raw_fused = sum_scores / passes_for_box
+            consensus_boost = 1.0 + 0.05 * min(len(c_scores) - 1, 3)
+            final_score = float(np.clip(raw_fused * consensus_boost, 0.0, 1.0))
 
             fused_boxes.append(cluster["fused_box"].tolist())
             fused_scores.append(final_score)
@@ -219,7 +234,7 @@ def generate_image_slices(
     return windows
 
 
-class WorkZoneEnhancedPredictor:
+class VexdetEnhancedPredictor:
     """High-accuracy inference wrapper combining CLAHE, Tiling, TTA, and WBF.
     
     Accepts any standard RF-DETR predictor (PyTorch model.inference() or
@@ -255,7 +270,7 @@ class WorkZoneEnhancedPredictor:
         base_predictor: Any,
         config: Optional[PipelineConfig] = None,
         force_enhanced: bool = False,
-    ) -> "WorkZoneEnhancedPredictor":
+    ) -> "VexdetEnhancedPredictor":
         """Factory constructor instantiating predictor from PipelineConfig."""
         if config is None:
             config = load_config()
@@ -338,6 +353,7 @@ class WorkZoneEnhancedPredictor:
                 candidate_class_names.append(d.get("class_name", "person"))
 
         # 4. Sliced / Tiled Inference (for small & far-field objects)
+        windows: List[Tuple[int, int, int, int]] = []
         if self.enable_tiling and (img_w > self.slice_size or img_h > self.slice_size):
             windows = generate_image_slices(
                 img_h=img_h,
@@ -364,13 +380,26 @@ class WorkZoneEnhancedPredictor:
                     candidate_class_ids.append(td.get("class_id", 0))
                     candidate_class_names.append(td.get("class_name", "person"))
 
-        # 5. Weighted Boxes Fusion (WBF)
+        # Define spatial pass count function for WBF normalization
+        def get_spatial_passes(cx: float, cy: float) -> int:
+            passes = 1  # Standard full-frame pass
+            if self.enable_tta:
+                passes += 1  # Flipped full-frame pass
+            if self.enable_tiling and windows:
+                passes += sum(
+                    1 for (wx1, wy1, wx2, wy2) in windows
+                    if wx1 <= cx <= wx2 and wy1 <= cy <= wy2
+                )
+            return max(1, passes)
+
+        # 5. Weighted Boxes Fusion (WBF) with multi-pass spatial normalization
         fused = fuse_boxes_wbf(
             boxes=candidate_boxes,
             scores=candidate_scores,
             class_ids=candidate_class_ids,
             class_names=candidate_class_names,
             iou_threshold=self.wbf_iou_threshold,
+            total_passes=get_spatial_passes,
         )
 
         # 6. Package result into supervision.Detections container if available
@@ -401,3 +430,7 @@ class WorkZoneEnhancedPredictor:
                 class_id=fused["class_ids"],
                 class_names=fused["class_names"],
             )
+
+
+# Backward-compatibility alias
+WorkZoneEnhancedPredictor = VexdetEnhancedPredictor

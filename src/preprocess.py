@@ -1,4 +1,4 @@
-"""Low-light and glare frame preprocessing for WorkZone Vision.
+"""Low-light and glare frame preprocessing for VEXDET.
 
 Applies Contrast Limited Adaptive Histogram Equalization (CLAHE) on the
 Luminance channel in LAB color space to recover detail in shadowed corners,

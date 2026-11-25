@@ -61,7 +61,7 @@ def draw_card(ax, x, y, w, h, title, subtitle, bullets, badge, border_color="#30
         line_y -= 0.34
 
 # Header Title
-ax.text(0.5, 8.0, "WorkZone Vision — End-to-End Pipeline Architecture", fontsize=18, fontweight="bold", color="#f0f6fc", zorder=3)
+ax.text(0.5, 8.0, "VEXDET — End-to-End Vision Detection & Extraction Pipeline", fontsize=18, fontweight="bold", color="#f0f6fc", zorder=3)
 ax.text(0.5, 7.6, "Edge-Ready RF-DETR Fine-Tuning, Active Learning & ONNX Optimization", fontsize=11, color="#8b949e", zorder=3)
 
 # Top Row: Stage 1, 2, 3, 4

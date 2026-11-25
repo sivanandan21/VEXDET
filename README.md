@@ -1,12 +1,12 @@
-# WorkZone Vision
+# VEXDET
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![CI](https://github.com/sivanandan21/workzone-vision/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/sivanandan21/vexdet/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![Architecture: RF-DETR](https://img.shields.io/badge/Architecture-RF--DETR_(RT--DETR)-orange.svg)](https://github.com/roboflow/rf-detr)
 [![Packaging: pyproject.toml](https://img.shields.io/badge/packaging-pyproject.toml-green.svg)](pyproject.toml)
 
-> **Edge-ready real-time object detection fine-tuning, active learning, hard-negative mining, and ONNX optimization pipeline powered by Apache-2.0 RF-DETR.**
+> **VEXDET (Vision Extraction Detector)** — Apache-2.0 real-time object detection fine-tuning, hard-negative mining, and ONNX export engine powered by RF-DETR.
 
 Author: **sivanandan21** ([sivapn721@gmail.com](mailto:sivapn721@gmail.com))
 
@@ -18,7 +18,7 @@ Traditional object detection workflows frequently rely on YOLO models (e.g., YOL
 
 **RF-DETR** (Real-Time Detection Transformer, developed by Roboflow based on RT-DETR) is a modern, state-of-the-art **all-rounder foundation detector**:
 
-| Feature | RF-DETR (WorkZone Vision) | YOLO (v8 / v11) |
+| Feature | RF-DETR (VEXDET) | YOLO (v8 / v11) |
 | :--- | :--- | :--- |
 | **Architecture** | **Transformer-based (NMS-free end-to-end)** | CNN-based with post-processing NMS |
 | **License** | **Apache-2.0** (Commercially friendly) | AGPL-3.0 (Viral copyleft restrictions) |
@@ -27,13 +27,13 @@ Traditional object detection workflows frequently rely on YOLO models (e.g., YOL
 | **Domains** | **Any** camera feed, drone, robotics, live RTSP, edge | Any camera feed |
 | **Fine-Tuning** | Single-class or multi-class custom datasets | Single-class or multi-class |
 
-**WorkZone Vision** packages this all-rounder foundation model into a production-grade active learning and deployment pipeline for any video stream, live camera feed, or image dataset.
+**VEXDET** packages this all-rounder foundation model into a production-grade active learning, inference, and deployment pipeline for any video stream, live camera feed, or image dataset.
 
 ---
 
 ## 🏗️ Pipeline Architecture & Capabilities
 
-![WorkZone Vision Pipeline Architecture](docs/pipeline_architecture.png)
+![VEXDET Pipeline Architecture](docs/pipeline_architecture.png)
 
 This project implements an end-to-end machine learning engineering lifecycle:
 
@@ -63,11 +63,11 @@ Raw Video / Stream ──> [ Frame Quality Filter ] ──> [ Dataset Validator 
 - **Hardware-Aware Training**: Automatically configures PyTorch CUDA hardware acceleration with safe fallback to CPU, dynamic batch sizing, and gradient accumulation.
 - **Early Stopping**: Prevents overfitting on custom domains with configurable patience.
 
-### 4. High-Accuracy Inference Engine (`WorkZoneEnhancedPredictor`)
+### 4. High-Accuracy Inference Engine (`VexdetEnhancedPredictor`)
 - **Low-Light & Glare Preprocessing (CLAHE)**: Evaluates L-channel histogram equalization in LAB color space to reveal underexposed silhouettes and mitigate window glare.
 - **Sliced / Tiled Inference**: Decomposes high-resolution frames (1080p/4K) into overlapping 640x640 windows to detect tiny, far-corner objects that single-pass detectors overlook.
 - **Test-Time Augmentation (TTA)**: Evaluates normal and horizontally flipped images with automatic coordinate un-flipping.
-- **Pure-NumPy Weighted Boxes Fusion (WBF)**: Merges overlapping predictions from full-frame + tiles + TTA into tighter, high-confidence bounding boxes, significantly outperforming standard Non-Maximum Suppression (NMS) in dense or occluded scenes.
+- **Pure-NumPy Weighted Boxes Fusion (WBF)**: Merges overlapping predictions from full-frame + tiles + TTA into tighter, high-confidence bounding boxes, significantly outperforming standard Non-Maximum Suppression (NMS) in dense or occluded scenes. Single-pass false positives are properly down-weighted by spatial pass coverage.
 
 ### 5. Active Learning & Hard-Negative Mining
 - **Ambiguity Detection**: Filters model predictions in uncertainty windows (e.g., confidence `0.15` to `0.45`) where the detector is unsure.
@@ -75,17 +75,17 @@ Raw Video / Stream ──> [ Frame Quality Filter ] ──> [ Dataset Validator 
 - **Review Manifest Generation**: Produces visual overlays and a JSON manifest ready for immediate re-labeling and Round 2 iterative retraining.
 
 ### 6. Rigorous Benchmarking & 3-Way Metrics
-- **Zero Placeholders**: Computes true COCO-standard `mAP@50` and `mAP@50:95` across 10 IoU thresholds using 101-point interpolated precision-recall curves.
+- **Zero Placeholders**: Computes true COCO-standard `mAP@50` and `mAP@50:95` across 10 IoU thresholds using 101-point interpolated precision-recall curves with per-class original GT index tracking.
 - **Small-Object Recall Metric**: Measures exact recall on targets `< 32x32px` to verify edge resolution enhancements.
 - **Statistical Latency Profiling**: Measures Warmup passes, Min, Max, Mean, P95 latency (ms), and FPS throughput on target hardware.
-- **3-Way Comparison Engine**: Generates side-by-side terminal comparison tables showing absolute improvement deltas of WorkZone Max-Accuracy vs. Fine-Tuned vs. Stock baseline.
+- **3-Way Comparison Engine**: Generates side-by-side terminal comparison tables showing absolute improvement deltas of VEXDET Max-Accuracy vs. Fine-Tuned vs. Stock baseline.
 
 ### 7. Edge Deployment & Optimization
-- **ONNX Graph Export**: Direct export of trained PyTorch checkpoints to optimized ONNX graphs (`opset 17`).
-- **ONNX Runtime Verification**: Loads exported artifacts via `RFDETRInference` to verify numerical consistency and measure deployment speedup.
+- **ONNX Graph Export**: Direct export of trained PyTorch checkpoints to optimized ONNX graphs (`opset 17`), dynamically passing supported export options via signature inspection.
+- **ONNX Runtime Verification**: Loads exported artifacts (`vexdet_{model_name.lower()}.onnx`) via `RFDETRInference` to verify numerical consistency and measure deployment speedup.
 
 ### 8. Modern Python Packaging & MLOps
-- Standard `pyproject.toml` configuration with console script entry point `workzone`.
+- Standard `pyproject.toml` configuration with console script entry points `vexdet` and `workzone`.
 - Pydantic v2 data models with runtime validation.
 - Interactive terminal UI using Rich tables, panels, and progress bars.
 - Automated GitHub Actions CI workflow running multi-version matrix tests.
@@ -95,7 +95,7 @@ Raw Video / Stream ──> [ Frame Quality Filter ] ──> [ Dataset Validator 
 ## 📁 Repository Structure
 
 ```
-workzone-vision/
+vexdet/
 ├── configs/
 │   └── config.yaml               # Pipeline hyperparameters and thresholds
 ├── data/
@@ -118,9 +118,10 @@ workzone-vision/
 │   ├── train_finetune.py         # Model fine-tuning execution
 │   ├── mine_hard_negatives.py    # Hard-negative & ambiguous detection miner
 │   ├── evaluate.py               # 3-way benchmark (mAP, small-object recall, latency)
-│   └── export_model.py           # ONNX export and runtime verification
+│   ├── export_model.py           # ONNX export and runtime verification
+│   └── predict.py                # Visual inference & prediction runner
 ├── tests/
-│   └── test_smoke.py             # Pytest test suite (29 tests)
+│   └── test_smoke.py             # Pytest test suite (32 tests)
 ├── .github/
 │   └── workflows/ci.yml          # GitHub Actions CI matrix
 ├── cli.py                        # Unified command-line interface
@@ -136,8 +137,8 @@ workzone-vision/
 
 ### Installation
 ```bash
-git clone https://github.com/sivanandan21/workzone-vision.git
-cd workzone-vision
+git clone https://github.com/sivanandan21/vexdet.git
+cd vexdet
 
 # Create and activate virtual environment (Python 3.10–3.12 recommended)
 python -m venv .venv
@@ -151,22 +152,22 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-All commands can be invoked via the global CLI alias `workzone` or `python cli.py`:
+All commands can be invoked via the global CLI alias `vexdet` (or `python cli.py`):
 
 ```bash
-workzone --help
+vexdet --help
 ```
 
 ### 1. Download Foundation Weights
 Fetch official weights for the default flagship model `RFDETRLarge` (or `RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`):
 ```bash
-workzone download --model-name RFDETRLarge
+vexdet download --model-name RFDETRLarge
 ```
 
 ### 2. Extract & Filter Video Frames
 Curate sharp, non-duplicate candidate frames from raw video clips or camera streams in `data/raw_videos/`:
 ```bash
-workzone extract-frames --video-dir data/raw_videos --frame-interval 15 --blur-threshold 100.0
+vexdet extract-frames --video-dir data/raw_videos --frame-interval 15 --blur-threshold 100.0
 ```
 - Drops blurry frames (`blur_score < blur_threshold`).
 - Drops static scenes (`change_pct < 1.5%` or histogram correlation `>= 0.95`).
@@ -174,46 +175,59 @@ workzone extract-frames --video-dir data/raw_videos --frame-interval 15 --blur-t
 ### 3. Validate Dataset Integrity
 Audit COCO labels before launching training:
 ```bash
-workzone validate-dataset --dataset-dir data/dataset --classes person
+vexdet validate-dataset --dataset-dir data/dataset --classes person
 ```
 
 ### 4. Fine-Tune on Custom Domain
 Fine-tune the detector on your labeled dataset:
 ```bash
-workzone train --model-name RFDETRLarge --epochs 30 --batch-size 2 --lr 0.00008
+vexdet train --model-name RFDETRLarge --epochs 30 --batch-size 2 --lr 0.00008
 ```
 
 ### 5. Mine Hard Negatives (Active Learning Loop)
 Uncover ambiguous detections (confidence `0.15`–`0.45`) to prepare Round 2 retraining data:
 ```bash
-workzone mine-negatives --input-dir data/extracted_frames --min-conf 0.15 --max-conf 0.45
+vexdet mine-negatives --input-dir data/extracted_frames --min-conf 0.15 --max-conf 0.45
 ```
 
 ### 6. Benchmark Accuracy & Latency (3-Way Comparison)
-Evaluate mAP and inference speed comparing pretrained baseline vs. fine-tuned vs. WorkZone Max-Accuracy engine:
+Evaluate mAP and inference speed comparing pretrained baseline vs. fine-tuned vs. VEXDET Max-Accuracy engine:
 ```bash
-workzone evaluate --model-name RFDETRLarge --checkpoint models/checkpoints/best.pt --enhanced
+vexdet evaluate --model-name RFDETRLarge --checkpoint models/checkpoints/best.pt --enhanced
 ```
 Runs a 3-way evaluation on `data/dataset/test`:
 1. **Stock Pretrained `RFDETRLarge`** (Baseline)
 2. **Fine-Tuned `RFDETRLarge`** (Single Pass)
-3. **WorkZone Max-Accuracy** (Fine-Tuned + CLAHE + Sliced Inference + TTA + WBF)
+3. **VEXDET Max-Accuracy** (Fine-Tuned + CLAHE + Sliced Inference + TTA + WBF)
 
 Options:
 - `--enhanced / --no-enhanced`: Toggle 3-way comparison with Max-Accuracy engine
 - `--tiling / --no-tiling`: Enable/disable 640x640 sliced inference for tiny far-field objects
 - `--tta / --no-tta`: Enable/disable horizontal test-time augmentation
 
-### 7. Export to ONNX & Verify
-Export the fine-tuned model for production edge deployment:
+### 7. Real-Time Vision Prediction
+Run inference on an image, directory of images, video file, or camera feed:
 ```bash
-workzone export --checkpoint models/checkpoints/best.pt --model-name RFDETRLarge
+# Single image with flagship base model
+vexdet predict path/to/image.jpg --model-name RFDETRLarge
+
+# Directory of images with fine-tuned checkpoint and enhanced engine
+vexdet predict data/extracted_frames --checkpoint models/checkpoints/best.pt --enhanced
+
+# Edge ONNX runtime inference
+vexdet predict path/to/video.mp4 --onnx models/exported/vexdet_rfdetrlarge.onnx
 ```
 
-### 8. End-to-End Pipeline
+### 8. Export to ONNX & Verify
+Export the fine-tuned model for production edge deployment:
+```bash
+vexdet export --checkpoint models/checkpoints/best.pt --model-name RFDETRLarge
+```
+
+### 9. End-to-End Pipeline
 Run the full active learning pipeline sequentially:
 ```bash
-workzone pipeline --model-name RFDETRLarge
+vexdet pipeline --model-name RFDETRLarge
 ```
 
 ---
@@ -225,14 +239,17 @@ Run the automated test suite with pytest:
 pytest -v
 ```
 
-All 29 smoke tests verify:
+All 32 smoke tests verify:
 - Architecture whitelist enforcement (`RFDETRNano`, `RFDETRSmall`, `RFDETRMedium`, `RFDETRLarge`)
+- Multi-class COCO ground-truth matching and precision-recall verification
+- WBF multi-pass spatial normalization and outlier down-weighting
+- Real-time vision prediction and visualization runner
 - Laplacian variance blur metric differentiation
 - Frame differencing and histogram correlation
 - Low-light CLAHE adaptive histogram equalization
 - Multi-scale image slicing and coordinate remapping
 - Pure-NumPy Weighted Boxes Fusion (WBF)
-- WorkZoneEnhancedPredictor end-to-end inference pass
+- VexdetEnhancedPredictor end-to-end inference pass
 - COCO dataset schema and geometry validation
 - Bounding box IoU calculations
 - 101-point interpolated Average Precision mathematics
@@ -242,7 +259,7 @@ All 29 smoke tests verify:
 
 ## 🌐 Real-World Application Domains
 
-Because RF-DETR is an all-rounder foundation detector, WorkZone Vision seamlessly applies across diverse industries:
+Because RF-DETR is an all-rounder foundation detector, VEXDET seamlessly applies across diverse industries:
 
 - **Workplace Safety & PPE**: Person detection, hard hat compliance, high-visibility vest verification.
 - **Smart Cities & Traffic**: Vehicle tracking, pedestrian detection, bicycle counting from traffic cameras.

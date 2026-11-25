@@ -1,4 +1,4 @@
-"""Smoke test suite for WorkZone Vision pipeline."""
+"""Smoke test suite for VEXDET pipeline."""
 
 import json
 from pathlib import Path
@@ -12,6 +12,7 @@ from src.evaluate import (
     coco_xywh_to_xyxy,
     compute_average_precision,
     compute_box_iou,
+    evaluate_dataset_accuracy,
 )
 from src.extract_frames import compute_blur_score, compute_frame_difference
 from src.model_factory import (
@@ -19,6 +20,7 @@ from src.model_factory import (
     create_class_thresholds,
     get_rfdetr_class,
 )
+from src.predict import draw_bounding_boxes, run_predict
 from src.validate_dataset import validate_split
 
 
@@ -289,6 +291,7 @@ from src.enhanced_inference import (
     compute_iou_matrix,
     fuse_boxes_wbf,
     generate_image_slices,
+    VexdetEnhancedPredictor,
     WorkZoneEnhancedPredictor,
 )
 
@@ -329,7 +332,7 @@ def test_fuse_boxes_wbf():
 
 
 def test_workzone_enhanced_predictor():
-    """Verify WorkZoneEnhancedPredictor wraps base predictor with CLAHE, TTA, Slicing & WBF."""
+    """Verify VexdetEnhancedPredictor (and WorkZone alias) wraps base predictor with CLAHE, TTA, Slicing & WBF."""
     class MockPredictor:
         def predict(self, img, threshold=0.35):
             h, w = img.shape[:2]
@@ -345,7 +348,7 @@ def test_workzone_enhanced_predictor():
             return _MockDets()
 
     mock = MockPredictor()
-    enhanced_p = WorkZoneEnhancedPredictor(
+    enhanced_p = VexdetEnhancedPredictor(
         base_predictor=mock,
         enable_clahe=True,
         enable_tiling=True,
@@ -357,3 +360,108 @@ def test_workzone_enhanced_predictor():
     assert len(dets) > 0
     assert hasattr(dets, "xyxy")
     assert hasattr(dets, "confidence")
+
+
+def test_fuse_boxes_wbf_outlier_downweighting():
+    """Verify WBF divides cluster confidence by total passes covering that region."""
+    boxes = [[100.0, 100.0, 200.0, 300.0]]
+    scores = [0.40]
+    class_ids = [0]
+    class_names = ["person"]
+
+    # When total_passes=4 (e.g. 1 full + 1 TTA + 2 tiles), 1-off false positive is downweighted
+    fused = fuse_boxes_wbf(boxes, scores, class_ids, class_names, total_passes=4)
+    assert len(fused["boxes"]) == 1
+    assert abs(fused["scores"][0] - 0.10) < 1e-4
+
+
+def test_multiclass_gt_matching_indices(tmp_path: Path):
+    """Verify evaluate_dataset_accuracy correctly aligns multi-class GT indices."""
+    # Synthetic image
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    img_path = tmp_path / "test_001.jpg"
+    cv2.imwrite(str(img_path), img)
+
+    # COCO JSON with 2 classes: person and head
+    coco_dict = {
+        "images": [{"id": 1, "file_name": "test_001.jpg", "width": 100, "height": 100}],
+        "categories": [
+            {"id": 1, "name": "person"},
+            {"id": 2, "name": "head"},
+        ],
+        "annotations": [
+            {"id": 10, "image_id": 1, "category_id": 1, "bbox": [10, 10, 50, 80], "area": 4000},
+            {"id": 11, "image_id": 1, "category_id": 2, "bbox": [20, 10, 20, 20], "area": 400},
+        ],
+    }
+    ann_path = tmp_path / "ann.json"
+    with open(ann_path, "w", encoding="utf-8") as f:
+        json.dump(coco_dict, f)
+
+    # Mock predictor returning matching person and head
+    class MockMultiPredictor:
+        def predict(self, image_rgb, threshold=0.35):
+            class _Dets:
+                xyxy = np.array([[10, 10, 60, 90], [20, 10, 40, 30]], dtype=np.float32)
+                confidence = np.array([0.90, 0.85], dtype=np.float32)
+                class_id = np.array([1, 2], dtype=np.int32)
+                data = {"class_name": ["person", "head"]}
+            return _Dets()
+
+    res = evaluate_dataset_accuracy(
+        predictor=MockMultiPredictor(),
+        test_images_dir=str(tmp_path),
+        annotation_file=str(ann_path),
+        target_classes=["person", "head"],
+        iou_thresholds=[0.50],
+        confidence_threshold=0.35,
+    )
+    assert res["mAP@50"] > 0.90
+    assert res["recall@50"] == 1.0
+    assert res["small_object_recall"] == 1.0
+
+
+def test_run_predict_workflow(tmp_path: Path):
+    """Verify run_predict executes and outputs annotated image and manifest."""
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    test_img_path = tmp_path / "sample.jpg"
+    cv2.imwrite(str(test_img_path), img)
+
+    out_dir = tmp_path / "predict_out"
+
+    # Test drawing helper
+    annotated = draw_bounding_boxes(
+        img,
+        [{"box_xyxy": [10, 10, 50, 50], "confidence": 0.88, "class_name": "person"}],
+    )
+    assert annotated.shape == img.shape
+
+    # Test run_predict with Mock
+    class MockPredictor:
+        def predict(self, frame_rgb, threshold=0.35):
+            class _Dets:
+                xyxy = np.array([[10, 10, 50, 50]], dtype=np.float32)
+                confidence = np.array([0.88], dtype=np.float32)
+                class_id = np.array([0], dtype=np.int32)
+                data = {"class_name": ["person"]}
+            return _Dets()
+
+    import src.predict as predict_module
+    orig_create_predictor = predict_module.create_predictor
+    orig_create_model = predict_module.create_model
+    try:
+        predict_module.create_model = lambda **kwargs: None
+        predict_module.create_predictor = lambda model: MockPredictor()
+
+        res = run_predict(
+            source=str(test_img_path),
+            model_name="RFDETRLarge",
+            output_dir=str(out_dir),
+            save=True,
+        )
+        assert res["total_detections"] == 1
+        assert (out_dir / "annotated_sample.jpg").is_file()
+        assert (out_dir / "predictions_summary.json").is_file()
+    finally:
+        predict_module.create_predictor = orig_create_predictor
+        predict_module.create_model = orig_create_model
